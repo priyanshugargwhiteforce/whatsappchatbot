@@ -38,16 +38,19 @@ const processIncomingMessage = async (body) => {
         const change = entry?.changes?.[0];
         const value = change?.value;
 
-        // 1. Ignore status updates
-        if (value?.statuses) {
-            console.log('[Webhook] Ignoring message status update event.');
+        const messages = value?.messages;
+        const statuses = value?.statuses;
+
+        // 1. Ignore status updates (sent, delivered, read) without messages
+        if (statuses && (!messages || messages.length === 0)) {
+            console.log('[Webhook] No messages found, status event or unsupported payload');
             return;
         }
 
         // 2. Validate messages structure
-        const msg = value?.messages?.[0];
+        const msg = messages?.[0];
         if (!msg) {
-            console.log('[Webhook] No message content found in entry payload.');
+            console.log('[Webhook] No messages found, status event or unsupported payload');
             return;
         }
 
@@ -64,9 +67,11 @@ const processIncomingMessage = async (body) => {
         const phoneId = value.metadata?.phone_number_id || env.WHATSAPP_PHONE_NUMBER_ID;
 
         if (!fromPhone || !messageId) {
-            console.warn('[Webhook] Missing recipient number or message ID.');
+            console.warn('[Webhook Error] Missing recipient number (from) or message ID in payload.');
             return;
         }
+
+        console.log(`[Webhook] Parsed text message from ${fromPhone}: ${messageText}`);
 
         // 5. Prevent duplicate processing using message id
         const isDuplicate = await messageLogModel.isDuplicateMessage(messageId);
@@ -74,8 +79,6 @@ const processIncomingMessage = async (body) => {
             console.log(`[Webhook] Duplicate message ID detected: ${messageId}. Skipping.`);
             return;
         }
-
-        console.log(`[Webhook] Processing text message from ${fromPhone}: "${messageText}"`);
 
         // 6. Log the incoming message to database
         try {
@@ -101,24 +104,24 @@ const processIncomingMessage = async (body) => {
         let wiraResponse;
 
         if (!activeSession) {
-            // Start a new session
+            console.log(`[WIRA] Starting session for ${fromPhone}`);
             wiraResponse = await wiraService.startChatbot(env.WIRA_WEB_NAME);
             if (wiraResponse && wiraResponse.success && wiraResponse.id) {
                 const newSessionId = wiraResponse.id;
                 console.log(`[Webhook] Created new WIRA session ${newSessionId} for ${fromPhone}`);
-                
                 await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
             } else {
                 throw new Error(wiraResponse?.message || 'Failed to start WIRA chatbot session.');
             }
         } else {
-            // Reply inside existing session
+            console.log(`[WIRA] Replying session ${activeSession.session_id} for ${fromPhone}`);
             try {
                 wiraResponse = await wiraService.replyChatbot(activeSession.session_id, messageText);
             } catch (replyError) {
                 console.warn(`[Webhook] WIRA session reply failed: ${replyError.message}. Restarting session.`);
                 
                 // Fallback: If session expired or was rejected, start a new chatbot session dynamically
+                console.log(`[WIRA] Starting session (fallback) for ${fromPhone}`);
                 wiraResponse = await wiraService.startChatbot(env.WIRA_WEB_NAME);
                 if (wiraResponse && wiraResponse.success && wiraResponse.id) {
                     const newSessionId = wiraResponse.id;
@@ -133,10 +136,12 @@ const processIncomingMessage = async (body) => {
         const formattedReply = whatsappService.formatWiraResponse(wiraResponse.data);
 
         // 9. Send response back to the same WhatsApp user
+        console.log(`[WhatsApp] Sending reply to ${fromPhone}`);
         const metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
         
         // 10. Extract Meta outgoing message ID if available, otherwise construct one
         const outgoingMessageId = metaRes?.messages?.[0]?.id || `out_${messageId}`;
+        console.log(`[WhatsApp] Message sent: ${outgoingMessageId}`);
 
         // 11. Log outgoing message
         await messageLogModel.logMessage({
@@ -149,7 +154,6 @@ const processIncomingMessage = async (body) => {
         });
 
         // 12. Check if the session is terminated
-        // Checking both: response data flag and root response flag (scope.terminated)
         const isTerminated = wiraResponse.data?.terminated === true || wiraResponse.terminated === true;
         if (isTerminated) {
             console.log(`[Webhook] WIRA response flagged session termination for ${fromPhone}. Terminating...`);
@@ -159,7 +163,7 @@ const processIncomingMessage = async (body) => {
         console.log(`[Webhook] Finished processing incoming message ${messageId}. Reply sent.`);
 
     } catch (error) {
-        console.error('[Webhook Background Error]', error.message);
+        console.error('[Webhook Error]', error.message);
     }
 };
 
@@ -168,22 +172,27 @@ const processIncomingMessage = async (body) => {
  */
 const receiveWebhook = (req, res) => {
     try {
+        console.log('[Webhook] Raw POST received');
+        console.log('[Webhook Raw Hit]', JSON.stringify(req.body, null, 2));
+
         const body = req.body;
 
         if (body.object === 'whatsapp_business_account') {
             // Respond 200 immediately to Meta to prevent retries
             res.status(200).send('EVENT_RECEIVED');
 
-            // Trigger background processing asynchronously
-            processIncomingMessage(body).catch((err) => {
-                console.error('[Webhook Async Background Error]', err.message);
+            // Trigger background processing asynchronously after response is sent
+            setImmediate(() => {
+                processIncomingMessage(body).catch((err) => {
+                    console.error('[Webhook Async Background Error]', err.message);
+                });
             });
         } else {
+            console.warn('[Webhook Warning] Unknown object type received:', body.object);
             res.sendStatus(404);
         }
     } catch (error) {
         console.error('[Webhook POST Error]', error.message);
-        // Fallback send if error happens before sendStatus
         if (!res.headersSent) {
             res.status(500).send(error.message);
         }

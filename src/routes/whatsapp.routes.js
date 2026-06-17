@@ -7,6 +7,24 @@ const env = require('../config/env');
 router.get('/webhook', controller.verifyWebhook);
 router.post('/webhook', controller.receiveWebhook);
 
+// Health/debug endpoint for development verification
+router.get('/health', (req, res) => {
+    // Only return detailed info if not in production to protect credentials info exposure
+    if (env.NODE_ENV === 'production') {
+        return res.status(403).json({
+            success: false,
+            message: 'Health/debug endpoint is restricted in production.'
+        });
+    }
+    return res.status(200).json({
+        status: 'ok',
+        port: env.PORT,
+        nodeEnv: env.NODE_ENV,
+        phoneNumberIdConfigured: !!env.WHATSAPP_PHONE_NUMBER_ID,
+        hasAccessToken: !!env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_ACCESS_TOKEN !== 'placeholder_access_token_here'
+    });
+});
+
 // Development testing routes (only when NODE_ENV !== "production")
 if (env.NODE_ENV !== 'production') {
     /**
