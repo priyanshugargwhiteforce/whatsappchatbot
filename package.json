@@ -1,0 +1,27 @@
+{
+  "name": "wira-ai-whatsapp-chat-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp Chat Bot by White Force for Job Searching and Job Regarding Query",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "WhatsApp",
+    "ChatBot"
+  ],
+  "author": "Priyanshu Garg Sr. Software Developer",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.16.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mysql2": "^3.22.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
