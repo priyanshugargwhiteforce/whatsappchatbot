@@ -110,6 +110,13 @@ const processIncomingMessage = async (body) => {
                 const newSessionId = wiraResponse.id;
                 console.log(`[Webhook] Created new WIRA session ${newSessionId} for ${fromPhone}`);
                 await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
+
+                // If first message is a query (not a basic greeting), reply immediately
+                const isGreeting = /^(hi|hello|hey|hola|start|get started|hii|helo)$/i.test(messageText.trim());
+                if (!isGreeting) {
+                    console.log(`[WIRA] First message is a query ("${messageText}"). Replying immediately in new session...`);
+                    wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
+                }
             } else {
                 throw new Error(wiraResponse?.message || 'Failed to start WIRA chatbot session.');
             }
@@ -126,6 +133,12 @@ const processIncomingMessage = async (body) => {
                 if (wiraResponse && wiraResponse.success && wiraResponse.id) {
                     const newSessionId = wiraResponse.id;
                     await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
+
+                    const isGreeting = /^(hi|hello|hey|hola|start|get started|hii|helo)$/i.test(messageText.trim());
+                    if (!isGreeting) {
+                        console.log(`[WIRA] Fallback first message is a query ("${messageText}"). Replying immediately...`);
+                        wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
+                    }
                 } else {
                     throw new Error(wiraResponse?.message || 'Failed to restart WIRA chatbot session.');
                 }
