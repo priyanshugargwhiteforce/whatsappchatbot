@@ -16,7 +16,7 @@ const startChatbot = async (webName = env.WIRA_WEB_NAME) => {
         }, {
             headers: { 'Content-Type': 'application/json' }
         });
-
+        console.log(`Line 19, wira.service.js`, response.data);
         return response.data;
     } catch (error) {
         console.error('[WIRA Service] startChatbot API error:', error.message);
@@ -41,7 +41,7 @@ const replyChatbot = async (sessionId, content) => {
         }, {
             headers: { 'Content-Type': 'application/json' }
         });
-
+        console.log(`Line 44, wira.service.js Reply ChatBot Response is :${response.data}`);
         return response.data;
     } catch (error) {
         console.error('[WIRA Service] replyChatbot API error:', error.message);

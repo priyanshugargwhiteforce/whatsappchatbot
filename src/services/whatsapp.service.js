@@ -11,14 +11,12 @@ const formatWiraResponse = (data) => {
     if (!data) {
         return 'How can I help you today?';
     }
-    console.log("Line13 whatsapp.services.js", data, "wira response data,", data.jobs)
 
     let text = data.content || '';
     text = text.trim();
     if (!text) {
         text = 'How can I help you today?'; // Fallback message
     }
-    console.log("Line20 whatsapp.services.js", data, "wira response data,", data.jobs)
 
     if (data.options && Array.isArray(data.options) && data.options.length > 0) {
         text += '\n\n*Options:*';
