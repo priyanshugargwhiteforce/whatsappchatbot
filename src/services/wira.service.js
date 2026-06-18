@@ -36,7 +36,7 @@ const replyChatbot = async (sessionId, content) => {
         console.log(`[WIRA Service] Sending reply query to session ${sessionId}...`);
 
         const response = await axios.post(url, {
-            id: sessionId,
+            sessionId,
             content
         }, {
             headers: { 'Content-Type': 'application/json' }

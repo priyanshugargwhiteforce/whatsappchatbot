@@ -106,6 +106,7 @@ const processIncomingMessage = async (body) => {
         if (!activeSession) {
             console.log(`[WIRA] Starting session for ${fromPhone}`);
             wiraResponse = await wiraService.startChatbot(env.WIRA_WEB_NAME);
+            console.log(`[WIRA Response] startChatbot response content: "${wiraResponse?.data?.content}"`);
             if (wiraResponse && wiraResponse.success && wiraResponse.id) {
                 const newSessionId = wiraResponse.id;
                 console.log(`[Webhook] Created new WIRA session ${newSessionId} for ${fromPhone}`);
@@ -116,6 +117,7 @@ const processIncomingMessage = async (body) => {
                 if (!isGreeting) {
                     console.log(`[WIRA] First message is a query ("${messageText}"). Replying immediately in new session...`);
                     wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
+                    console.log(`[WIRA Response] replyChatbot response content: "${wiraResponse?.data?.content}"`);
                 }
             } else {
                 throw new Error(wiraResponse?.message || 'Failed to start WIRA chatbot session.');
@@ -124,12 +126,14 @@ const processIncomingMessage = async (body) => {
             console.log(`[WIRA] Replying session ${activeSession.session_id} for ${fromPhone}`);
             try {
                 wiraResponse = await wiraService.replyChatbot(activeSession.session_id, messageText);
+                console.log(`[WIRA Response] replyChatbot response content: "${wiraResponse?.data?.content}"`);
             } catch (replyError) {
                 console.warn(`[Webhook] WIRA session reply failed: ${replyError.message}. Restarting session.`);
                 
                 // Fallback: If session expired or was rejected, start a new chatbot session dynamically
                 console.log(`[WIRA] Starting session (fallback) for ${fromPhone}`);
                 wiraResponse = await wiraService.startChatbot(env.WIRA_WEB_NAME);
+                console.log(`[WIRA Response] Fallback startChatbot response content: "${wiraResponse?.data?.content}"`);
                 if (wiraResponse && wiraResponse.success && wiraResponse.id) {
                     const newSessionId = wiraResponse.id;
                     await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
@@ -138,6 +142,7 @@ const processIncomingMessage = async (body) => {
                     if (!isGreeting) {
                         console.log(`[WIRA] Fallback first message is a query ("${messageText}"). Replying immediately...`);
                         wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
+                        console.log(`[WIRA Response] Fallback replyChatbot response content: "${wiraResponse?.data?.content}"`);
                     }
                 } else {
                     throw new Error(wiraResponse?.message || 'Failed to restart WIRA chatbot session.');
@@ -149,7 +154,7 @@ const processIncomingMessage = async (body) => {
         const formattedReply = whatsappService.formatWiraResponse(wiraResponse.data);
 
         // 9. Send response back to the same WhatsApp user
-        console.log(`[WhatsApp] Sending reply to ${fromPhone}`);
+        console.log(`[WhatsApp] Sending reply to ${fromPhone}: "${formattedReply.replace(/\n/g, ' ')}"`);
         const metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
         
         // 10. Extract Meta outgoing message ID if available, otherwise construct one
