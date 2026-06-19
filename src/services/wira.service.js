@@ -41,7 +41,7 @@ const replyChatbot = async (sessionId, content) => {
         }, {
             headers: { 'Content-Type': 'application/json' }
         });
-        console.log(`Line 44, wira.service.js Reply ChatBot Response is :${response.data}`);
+        console.log(`Line 44, wira.service.js Reply ChatBot Response is :`,response.data);
         return response.data;
     } catch (error) {
         console.error('[WIRA Service] replyChatbot API error:', error.message);

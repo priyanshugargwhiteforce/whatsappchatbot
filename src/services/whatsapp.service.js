@@ -36,9 +36,80 @@ const formatWiraResponse = (data) => {
         text += '\n\n*Jobs:*';
         const topJobs = data.jobs.slice(0, 5);
         topJobs.forEach((job, idx) => {
-            const title = job.title || job.jobTitle || job.name || 'Job';
-            const location = job.location || job.jobLocation || job.city || 'Remote';
-            text += `\n${idx + 1}. ${title} - ${location}`;
+            const title = job.position_name || job.title || job.jobTitle || job.name || 'Job';
+            const company = job.clientname || job.company;
+            const location = job.city || job.locations || job.jobLocation || job.location || 'Remote';
+            
+            // Build the job header
+            let jobText = `\n\n${idx + 1}. *${title}*`;
+            if (company) {
+                jobText += ` at *${company}*`;
+            }
+            
+            // Location
+            jobText += `\n📍 *Location:* ${location}`;
+            
+            // Experience
+            const minExp = job.min_year_exp;
+            const maxExp = job.max_year_exp;
+            if (minExp !== undefined && minExp !== null && maxExp !== undefined && maxExp !== null) {
+                jobText += `\n💼 *Experience:* ${minExp}-${maxExp} Years`;
+            } else if (minExp !== undefined && minExp !== null) {
+                jobText += `\n💼 *Experience:* ${minExp}+ Years`;
+            } else if (maxExp !== undefined && maxExp !== null) {
+                jobText += `\n💼 *Experience:* Up to ${maxExp} Years`;
+            }
+            
+            // Skills
+            if (job.skill_set) {
+                jobText += `\n🛠️ *Skills:* ${job.skill_set}`;
+            }
+            
+            // Salary
+            const formatSalary = (val) => {
+                if (val === null || val === undefined || val === '') return '';
+                const num = Number(val);
+                return isNaN(num) ? val : num.toLocaleString('en-IN');
+            };
+            const minSal = formatSalary(job.min_salary);
+            const maxSal = formatSalary(job.max_salary);
+            const salType = job.salary_type || '';
+            const payType = job.pay_type || '';
+            
+            if (minSal || maxSal) {
+                let salLine = `\n💰 *Salary:* `;
+                if (minSal && maxSal) {
+                    salLine += `${minSal} - ${maxSal}`;
+                } else {
+                    salLine += minSal || maxSal;
+                }
+                if (salType) salLine += ` ${salType}`;
+                if (payType) salLine += ` ${payType}`;
+                jobText += salLine.trimEnd();
+            }
+            
+            // Contact
+            const contactName = job.contact_person_name;
+            const contactPhone = job.person_contact;
+            const contactEmail = job.person_email;
+            const contactInfo = [];
+            if (contactPhone) contactInfo.push(contactPhone);
+            if (contactEmail) contactInfo.push(contactEmail);
+            
+            if (contactName || contactInfo.length > 0) {
+                let contactLine = `\n📞 *Contact:* `;
+                if (contactName) {
+                    contactLine += contactName;
+                    if (contactInfo.length > 0) {
+                        contactLine += ` (${contactInfo.join(' / ')})`;
+                    }
+                } else {
+                    contactLine += contactInfo.join(' / ');
+                }
+                jobText += contactLine;
+            }
+            
+            text += jobText;
         });
     }
 
