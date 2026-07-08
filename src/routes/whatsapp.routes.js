@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/whatsappWebhook.controller');
 const env = require('../config/env');
+const { validateForwardedWebhook } = require('../middleware/auth');
 
 // GET and POST webhooks
 router.get('/webhook', controller.verifyWebhook);
-router.post('/webhook', controller.receiveWebhook);
+router.post('/webhook', validateForwardedWebhook, controller.receiveWebhook);
 
 // Health/debug endpoint for development verification
 router.get('/health', (req, res) => {

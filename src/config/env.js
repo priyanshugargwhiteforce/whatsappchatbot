@@ -11,7 +11,8 @@ const requiredEnv = [
     'DB_HOST',
     'DB_USER',
     'DB_PASSWORD',
-    'DB_NAME'
+    'DB_NAME',
+    'WIRA_INTERNAL_SECRET'
 ];
 
 // Verify required variables
@@ -29,6 +30,7 @@ module.exports = {
     WHATSAPP_API_VERSION: process.env.WHATSAPP_API_VERSION || 'v20.0',
     WIRA_BASE_URL: process.env.WIRA_BASE_URL || 'https://astro-buddy.in/AI',
     WIRA_WEB_NAME: process.env.WIRA_WEB_NAME || 'White Force',
+    WIRA_INTERNAL_SECRET: process.env.WIRA_INTERNAL_SECRET,
     database: {
         host: process.env.DB_HOST || 'localhost',
         user: process.env.DB_USER || 'app_user',
