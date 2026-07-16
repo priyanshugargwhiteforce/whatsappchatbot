@@ -54,15 +54,15 @@ const processIncomingMessage = async (body) => {
             return;
         }
 
-        // 3. Process only text messages for MVP
-        if (msg.type !== 'text' || !msg.text?.body) {
-            console.log(`[Webhook] Ignoring non-text message type: ${msg.type}`);
+        // 3. Process text, image, and document messages
+        const allowedTypes = ['text', 'image', 'document'];
+        if (!allowedTypes.includes(msg.type)) {
+            console.log(`[Webhook] Ignoring unsupported message type: ${msg.type}`);
             return;
         }
 
         // 4. Extract variables
         const fromPhone = msg.from || value.contacts?.[0]?.wa_id;
-        const messageText = msg.text.body;
         const messageId = msg.id;
         const phoneId = value.metadata?.phone_number_id || env.WHATSAPP_PHONE_NUMBER_ID;
 
@@ -71,7 +71,53 @@ const processIncomingMessage = async (body) => {
             return;
         }
 
-        console.log(`[Webhook] Parsed text message from ${fromPhone}: ${messageText}`);
+        let messageText = '';
+        let mediaInfo = null;
+
+        if (msg.type === 'text') {
+            messageText = msg.text?.body || '';
+        } else if (msg.type === 'image') {
+            const mediaId = msg.image?.id;
+            const caption = msg.image?.caption || '';
+            console.log(`[Webhook] Processing incoming image with ID: ${mediaId}`);
+            
+            try {
+                const downloaded = await whatsappService.downloadWhatsAppMedia(mediaId);
+                const publicUrl = `${env.APP_URL}${downloaded.relativePath}`;
+                mediaInfo = {
+                    mediaId,
+                    mimeType: downloaded.mimeType,
+                    filename: downloaded.filename,
+                    url: publicUrl
+                };
+                messageText = caption ? `${caption} (File: ${publicUrl})` : publicUrl;
+            } catch (mediaErr) {
+                console.error('[Webhook Media Error] Failed to process image:', mediaErr.message);
+                messageText = `[Image Error: Failed to download media ID ${mediaId}]`;
+            }
+        } else if (msg.type === 'document') {
+            const mediaId = msg.document?.id;
+            const originalFilename = msg.document?.filename || 'document';
+            const caption = msg.document?.caption || '';
+            console.log(`[Webhook] Processing incoming document: ${originalFilename} with ID: ${mediaId}`);
+            
+            try {
+                const downloaded = await whatsappService.downloadWhatsAppMedia(mediaId, originalFilename);
+                const publicUrl = `${env.APP_URL}${downloaded.relativePath}`;
+                mediaInfo = {
+                    mediaId,
+                    mimeType: downloaded.mimeType,
+                    filename: downloaded.filename,
+                    url: publicUrl
+                };
+                messageText = caption ? `${caption} (File: ${publicUrl})` : publicUrl;
+            } catch (mediaErr) {
+                console.error('[Webhook Media Error] Failed to process document:', mediaErr.message);
+                messageText = `[Document Error: Failed to download media ID ${mediaId}]`;
+            }
+        }
+
+        console.log(`[Webhook] Parsed ${msg.type} message from ${fromPhone}: ${messageText}`);
 
         // 5. Prevent duplicate processing using message id
         const isDuplicate = await messageLogModel.isDuplicateMessage(messageId);
@@ -86,9 +132,12 @@ const processIncomingMessage = async (body) => {
                 whatsappNumber: fromPhone,
                 messageId: messageId,
                 direction: 'incoming',
-                messageType: 'text',
+                messageType: msg.type,
                 messageText: messageText,
-                rawPayload: msg
+                rawPayload: {
+                    ...msg,
+                    _mediaInfo: mediaInfo
+                }
             });
         } catch (dbErr) {
             // If the query failed because of UNIQUE key constraint, it's a duplicate message
@@ -113,7 +162,7 @@ const processIncomingMessage = async (body) => {
                 await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
 
                 // If first message is a query (not a basic greeting), reply immediately
-                const isGreeting = /^(hi|hello|hey|hola|start|get started|hii|helo)$/i.test(messageText.trim());
+                const isGreeting = /^(hi|hello|hey|hola|start|get started|hii|helo|hlo)$/i.test(messageText.trim());
                 if (!isGreeting) {
                     console.log(`[WIRA] First message is a query ("${messageText}"). Replying immediately in new session...`);
                     wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);

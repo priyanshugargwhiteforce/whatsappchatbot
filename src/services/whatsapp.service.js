@@ -1,4 +1,6 @@
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 const env = require('../config/env');
 
 /**
@@ -169,7 +171,108 @@ const sendTextMessage = async (toPhoneNumber, messageBody, customPhoneNumberId =
     }
 };
 
+const mimeToExt = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'text/plain': 'txt'
+};
+
+/**
+ * Downloads a media file from WhatsApp Meta Cloud API and saves it locally
+ * @param {string} mediaId 
+ * @param {string|null} originalFilename 
+ * @returns {Promise<object>} File information
+ */
+const downloadWhatsAppMedia = async (mediaId, originalFilename = null) => {
+    // Support testing mode with mock media IDs
+    if (mediaId && mediaId.startsWith('test_')) {
+        console.log(`[WhatsApp Service] Simulating download for mock media ID: ${mediaId}`);
+        const mimeType = mediaId.includes('image') ? 'image/jpeg' : 'application/pdf';
+        const ext = mimeToExt[mimeType] || 'bin';
+        let savedFilename = originalFilename || `mock_${Date.now()}.${ext}`;
+        if (originalFilename) {
+            savedFilename = `${Date.now()}_${savedFilename.replace(/\s+/g, '_')}`;
+        }
+        
+        const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+        const savePath = path.join(uploadsDir, savedFilename);
+        
+        await fs.promises.writeFile(savePath, `Mock content for media ID: ${mediaId}`);
+        console.log(`[WhatsApp Service] Mock media saved successfully at ${savePath}`);
+        
+        return {
+            filename: savedFilename,
+            mimeType: mimeType,
+            relativePath: `/uploads/${savedFilename}`
+        };
+    }
+
+    const token = env.WHATSAPP_ACCESS_TOKEN;
+    const version = env.WHATSAPP_API_VERSION;
+    
+    if (!token || token === 'placeholder_access_token_here') {
+        throw new Error('WhatsApp Access Token is missing or placeholder.');
+    }
+
+    // 1. Get media metadata URL from Meta API
+    const metadataUrl = `https://graph.facebook.com/${version}/${mediaId}`;
+    console.log(`[WhatsApp Service] Fetching media metadata for ID: ${mediaId}...`);
+    
+    const metaResponse = await axios.get(metadataUrl, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    const downloadUrl = metaResponse.data.url;
+    const mimeType = metaResponse.data.mime_type;
+
+    if (!downloadUrl) {
+        throw new Error(`Failed to retrieve download URL for media ID: ${mediaId}`);
+    }
+
+    // 2. Download media file
+    console.log(`[WhatsApp Service] Downloading media from: ${downloadUrl}`);
+    const fileResponse = await axios.get(downloadUrl, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        },
+        responseType: 'arraybuffer'
+    });
+
+    // 3. Determine filename
+    let savedFilename = originalFilename;
+    if (!savedFilename) {
+        const ext = mimeToExt[mimeType] || mimeType.split('/')[1] || 'bin';
+        savedFilename = `media_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.${ext}`;
+    } else {
+        // Prepend a timestamp and sanitize spaces to prevent conflicts
+        savedFilename = `${Date.now()}_${savedFilename.replace(/\s+/g, '_')}`;
+    }
+
+    const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+    const savePath = path.join(uploadsDir, savedFilename);
+
+    // 4. Save to disk
+    await fs.promises.writeFile(savePath, fileResponse.data);
+    console.log(`[WhatsApp Service] Media saved successfully at ${savePath}`);
+
+    return {
+        filename: savedFilename,
+        mimeType: mimeType,
+        relativePath: `/uploads/${savedFilename}`
+    };
+};
+
 module.exports = {
     formatWiraResponse,
-    sendTextMessage
+    sendTextMessage,
+    downloadWhatsAppMedia
 };
+

@@ -39,8 +39,35 @@ if (env.NODE_ENV !== 'production') {
         let payload = req.body;
 
         // If simplified body format is sent, transform it into Meta payload structure
-        if (payload.from && payload.text) {
+        if (payload.from && (payload.text || payload.type === 'image' || payload.type === 'document')) {
             const mockMsgId = payload.messageId || `test_wamid_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+            
+            let messageObj = {
+                from: payload.from,
+                id: mockMsgId,
+                timestamp: Math.floor(Date.now() / 1000).toString(),
+                type: payload.type || 'text'
+            };
+
+            if (messageObj.type === 'text') {
+                messageObj.text = {
+                    body: payload.text
+                };
+            } else if (messageObj.type === 'image') {
+                messageObj.image = {
+                    id: payload.mediaId || 'test_image_id',
+                    mime_type: payload.mimeType || 'image/jpeg',
+                    caption: payload.caption || ''
+                };
+            } else if (messageObj.type === 'document') {
+                messageObj.document = {
+                    id: payload.mediaId || 'test_document_id',
+                    filename: payload.filename || 'resume.pdf',
+                    mime_type: payload.mimeType || 'application/pdf',
+                    caption: payload.caption || ''
+                };
+            }
+
             payload = {
                 object: 'whatsapp_business_account',
                 entry: [
@@ -58,17 +85,7 @@ if (env.NODE_ENV !== 'production') {
                                             wa_id: payload.from
                                         }
                                     ],
-                                    messages: [
-                                        {
-                                            from: payload.from,
-                                            id: mockMsgId,
-                                            timestamp: Math.floor(Date.now() / 1000).toString(),
-                                            text: {
-                                                body: payload.text
-                                            },
-                                            type: 'text'
-                                        }
-                                    ]
+                                    messages: [messageObj]
                                 },
                                 field: 'messages'
                             }

@@ -24,6 +24,7 @@ if (missing.length > 0) {
 module.exports = {
     PORT: parseInt(process.env.PORT || '8001', 10),
     NODE_ENV: process.env.NODE_ENV || 'development',
+    APP_URL: process.env.APP_URL || 'http://localhost:8001',
     META_VERIFY_TOKEN: process.env.META_VERIFY_TOKEN,
     WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
     WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
