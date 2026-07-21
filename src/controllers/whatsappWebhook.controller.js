@@ -54,8 +54,8 @@ const processIncomingMessage = async (body) => {
             return;
         }
 
-        // 3. Process text, image, document, and audio messages
-        const allowedTypes = ['text', 'image', 'document', 'audio'];
+        // 3. Process text, image, document, audio, and location messages
+        const allowedTypes = ['text', 'image', 'document', 'audio', 'location'];
         if (!allowedTypes.includes(msg.type)) {
             console.log(`[Webhook] Ignoring unsupported message type: ${msg.type}`);
             return;
@@ -133,6 +133,28 @@ const processIncomingMessage = async (body) => {
                 console.error('[Webhook Media Error] Failed to process audio:', mediaErr.message);
                 messageText = `[Audio Error: Failed to download media ID ${mediaId}]`;
             }
+        } else if (msg.type === 'location') {
+            const lat = msg.location?.latitude;
+            const lng = msg.location?.longitude;
+            const name = msg.location?.name;
+            const address = msg.location?.address;
+            
+            console.log(`[Webhook] Processing incoming location: Lat ${lat}, Lng ${lng}`);
+            
+            let locDetails = [];
+            if (name) locDetails.push(`Name: ${name}`);
+            if (address) locDetails.push(`Address: ${address}`);
+            locDetails.push(`Coordinates: ${lat},${lng}`);
+            locDetails.push(`Google Maps: https://www.google.com/maps?q=${lat},${lng}`);
+            
+            messageText = locDetails.join('\n');
+            mediaInfo = {
+                latitude: lat,
+                longitude: lng,
+                name: name || null,
+                address: address || null,
+                googleMapsUrl: `https://www.google.com/maps?q=${lat},${lng}`
+            };
         }
 
         console.log(`[Webhook] Parsed ${msg.type} message from ${fromPhone}: ${messageText}`);

@@ -39,7 +39,7 @@ if (env.NODE_ENV !== 'production') {
         let payload = req.body;
 
         // If simplified body format is sent, transform it into Meta payload structure
-        if (payload.from && (payload.text || payload.type === 'image' || payload.type === 'document' || payload.type === 'audio')) {
+        if (payload.from && (payload.text || payload.type === 'image' || payload.type === 'document' || payload.type === 'audio' || payload.type === 'location')) {
             const mockMsgId = payload.messageId || `test_wamid_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
             
             let messageObj = {
@@ -71,6 +71,13 @@ if (env.NODE_ENV !== 'production') {
                     id: payload.mediaId || 'test_audio_id',
                     mime_type: payload.mimeType || 'audio/ogg; codecs=opus',
                     voice: payload.voice !== undefined ? payload.voice : true
+                };
+            } else if (messageObj.type === 'location') {
+                messageObj.location = {
+                    latitude: payload.latitude || 37.4838726,
+                    longitude: payload.longitude || -122.1490044,
+                    name: payload.locationName || '',
+                    address: payload.locationAddress || ''
                 };
             }
 
