@@ -180,7 +180,13 @@ const mimeToExt = {
     'application/pdf': 'pdf',
     'application/msword': 'doc',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-    'text/plain': 'txt'
+    'text/plain': 'txt',
+    'audio/ogg; codecs=opus': 'ogg',
+    'audio/ogg': 'ogg',
+    'audio/mp4': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/amr': 'amr',
+    'audio/aac': 'aac'
 };
 
 /**
@@ -193,7 +199,12 @@ const downloadWhatsAppMedia = async (mediaId, originalFilename = null) => {
     // Support testing mode with mock media IDs
     if (mediaId && mediaId.startsWith('test_')) {
         console.log(`[WhatsApp Service] Simulating download for mock media ID: ${mediaId}`);
-        const mimeType = mediaId.includes('image') ? 'image/jpeg' : 'application/pdf';
+        let mimeType = 'application/pdf';
+        if (mediaId.includes('image')) {
+            mimeType = 'image/jpeg';
+        } else if (mediaId.includes('audio') || mediaId.includes('voice')) {
+            mimeType = 'audio/ogg; codecs=opus';
+        }
         const ext = mimeToExt[mimeType] || 'bin';
         let savedFilename = originalFilename || `mock_${Date.now()}.${ext}`;
         if (originalFilename) {

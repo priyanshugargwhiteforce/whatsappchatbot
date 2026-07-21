@@ -54,8 +54,8 @@ const processIncomingMessage = async (body) => {
             return;
         }
 
-        // 3. Process text, image, and document messages
-        const allowedTypes = ['text', 'image', 'document'];
+        // 3. Process text, image, document, and audio messages
+        const allowedTypes = ['text', 'image', 'document', 'audio'];
         if (!allowedTypes.includes(msg.type)) {
             console.log(`[Webhook] Ignoring unsupported message type: ${msg.type}`);
             return;
@@ -114,6 +114,24 @@ const processIncomingMessage = async (body) => {
             } catch (mediaErr) {
                 console.error('[Webhook Media Error] Failed to process document:', mediaErr.message);
                 messageText = `[Document Error: Failed to download media ID ${mediaId}]`;
+            }
+        } else if (msg.type === 'audio') {
+            const mediaId = msg.audio?.id;
+            console.log(`[Webhook] Processing incoming audio/voice with ID: ${mediaId}`);
+            
+            try {
+                const downloaded = await whatsappService.downloadWhatsAppMedia(mediaId);
+                const publicUrl = `${env.APP_URL}${downloaded.relativePath}`;
+                mediaInfo = {
+                    mediaId,
+                    mimeType: downloaded.mimeType,
+                    filename: downloaded.filename,
+                    url: publicUrl
+                };
+                messageText = publicUrl;
+            } catch (mediaErr) {
+                console.error('[Webhook Media Error] Failed to process audio:', mediaErr.message);
+                messageText = `[Audio Error: Failed to download media ID ${mediaId}]`;
             }
         }
 

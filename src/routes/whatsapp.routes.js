@@ -39,7 +39,7 @@ if (env.NODE_ENV !== 'production') {
         let payload = req.body;
 
         // If simplified body format is sent, transform it into Meta payload structure
-        if (payload.from && (payload.text || payload.type === 'image' || payload.type === 'document')) {
+        if (payload.from && (payload.text || payload.type === 'image' || payload.type === 'document' || payload.type === 'audio')) {
             const mockMsgId = payload.messageId || `test_wamid_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
             
             let messageObj = {
@@ -65,6 +65,12 @@ if (env.NODE_ENV !== 'production') {
                     filename: payload.filename || 'resume.pdf',
                     mime_type: payload.mimeType || 'application/pdf',
                     caption: payload.caption || ''
+                };
+            } else if (messageObj.type === 'audio') {
+                messageObj.audio = {
+                    id: payload.mediaId || 'test_audio_id',
+                    mime_type: payload.mimeType || 'audio/ogg; codecs=opus',
+                    voice: payload.voice !== undefined ? payload.voice : true
                 };
             }
 
