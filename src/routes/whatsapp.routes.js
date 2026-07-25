@@ -136,7 +136,7 @@ if (env.NODE_ENV !== 'production') {
     });
 } else {
     // Return 403 Forbidden for dev routes if accessed directly in production mode
-    router.post('/test/*', (req, res) => {
+    router.post('/test/*splat', (req, res) => {
         return res.status(403).json({
             success: false,
             message: 'Test routes are disabled in production environment.'
