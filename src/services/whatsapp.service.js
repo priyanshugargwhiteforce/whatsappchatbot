@@ -173,6 +173,20 @@ const sendTextMessage = async (toPhoneNumber, messageBody, customPhoneNumberId =
 };
 
 /**
+ * Helper to truncate text at word boundary without adding trailing '...'
+ */
+const getCleanTitle = (text, maxLen = 24) => {
+    const trimmed = (text || '').trim();
+    if (trimmed.length <= maxLen) return trimmed;
+    const sub = trimmed.substring(0, maxLen);
+    const lastSpace = sub.lastIndexOf(' ');
+    if (lastSpace > 8) {
+        return sub.substring(0, lastSpace).trim();
+    }
+    return sub.trim();
+};
+
+/**
  * Send interactive button or list message using Meta Cloud API
  * @param {string} toPhoneNumber Recipient phone number (wa_id)
  * @param {string} bodyText Main text content for the interactive message (max 1024 chars)
@@ -213,7 +227,7 @@ const sendInteractiveMessage = async (toPhoneNumber, bodyText, options, customPh
             return {
                 type: 'reply',
                 reply: {
-                    id: `btn_${idx + 1}_${Date.now()}`,
+                    id: cleanOpt.substring(0, 200),
                     title: cleanOpt.substring(0, 20)
                 }
             };
@@ -238,12 +252,17 @@ const sendInteractiveMessage = async (toPhoneNumber, bodyText, options, customPh
         // List Message (Up to 10 rows)
         const rows = validOptions.slice(0, 10).map((opt, idx) => {
             const cleanOpt = opt.trim();
-            const rowTitle = cleanOpt.length > 24 ? cleanOpt.substring(0, 21) + '...' : cleanOpt;
+            const rowTitle = getCleanTitle(cleanOpt, 24);
+            const rowDesc = cleanOpt.length > 24 ? cleanOpt.substring(0, 72) : '';
 
-            return {
+            const rowObj = {
                 id: cleanOpt.substring(0, 200),
                 title: rowTitle
             };
+            if (rowDesc) {
+                rowObj.description = rowDesc;
+            }
+            return rowObj;
         });
 
         interactivePayload = {

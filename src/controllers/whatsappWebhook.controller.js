@@ -79,15 +79,27 @@ const processIncomingMessage = async (body) => {
         } else if (msg.type === 'interactive') {
             const interactive = msg.interactive;
             if (interactive?.type === 'button_reply') {
-                messageText = interactive.button_reply?.title || '';
+                const btn = interactive.button_reply;
+                const btnId = btn?.id || '';
+                const btnTitle = btn?.title || '';
+                if (btnId && !btnId.startsWith('btn_')) {
+                    messageText = btnId;
+                } else {
+                    messageText = btnTitle;
+                }
             } else if (interactive?.type === 'list_reply') {
                 const listReply = interactive.list_reply;
+                const replyDesc = listReply?.description || '';
                 const replyId = listReply?.id || '';
-                // Prefer id (which holds the full untruncated option text up to 200 chars) over truncated title
-                if (replyId && !replyId.startsWith('opt_')) {
+                const replyTitle = listReply?.title || '';
+
+                // Prioritize full untruncated sentence: description first, then non-synthetic id, then title
+                if (replyDesc) {
+                    messageText = replyDesc;
+                } else if (replyId && !replyId.startsWith('opt_')) {
                     messageText = replyId;
                 } else {
-                    messageText = listReply?.description || listReply?.title || replyId || '';
+                    messageText = replyTitle;
                 }
             }
             console.log(`[Webhook] Processing incoming interactive reply from ${fromPhone}: "${messageText}"`);
