@@ -93,11 +93,11 @@ const processIncomingMessage = async (body) => {
                 const replyId = listReply?.id || '';
                 const replyTitle = listReply?.title || '';
 
-                // Prioritize full untruncated text from id (max 200 chars), then description, then title
-                if (replyId && !replyId.startsWith('opt_') && !replyId.startsWith('btn_')) {
-                    messageText = replyId;
-                } else if (replyDesc) {
+                // Prioritize full untruncated sentence: description first, then non-synthetic id, then title
+                if (replyDesc) {
                     messageText = replyDesc;
+                } else if (replyId && !replyId.startsWith('opt_')) {
+                    messageText = replyId;
                 } else {
                     messageText = replyTitle;
                 }

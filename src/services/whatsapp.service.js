@@ -252,12 +252,17 @@ const sendInteractiveMessage = async (toPhoneNumber, bodyText, options, customPh
         // List Message (Up to 10 rows)
         const rows = validOptions.slice(0, 10).map((opt, idx) => {
             const cleanOpt = opt.trim();
-            const rowTitle = cleanOpt.length > 24 ? cleanOpt.substring(0, 24) : cleanOpt;
+            const rowTitle = getCleanTitle(cleanOpt, 24);
+            const rowDesc = cleanOpt.length > 24 ? cleanOpt.substring(0, 72) : '';
 
-            return {
+            const rowObj = {
                 id: cleanOpt.substring(0, 200),
                 title: rowTitle
             };
+            if (rowDesc) {
+                rowObj.description = rowDesc;
+            }
+            return rowObj;
         });
 
         interactivePayload = {
