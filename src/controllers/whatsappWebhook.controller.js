@@ -81,8 +81,14 @@ const processIncomingMessage = async (body) => {
             if (interactive?.type === 'button_reply') {
                 messageText = interactive.button_reply?.title || '';
             } else if (interactive?.type === 'list_reply') {
-                // Prefer description (which contains the full untruncated sentence) over truncated title
-                messageText = interactive.list_reply?.description || interactive.list_reply?.title || '';
+                const listReply = interactive.list_reply;
+                const replyId = listReply?.id || '';
+                // Prefer id (which holds the full untruncated option text up to 200 chars) over truncated title
+                if (replyId && !replyId.startsWith('opt_')) {
+                    messageText = replyId;
+                } else {
+                    messageText = listReply?.description || listReply?.title || replyId || '';
+                }
             }
             console.log(`[Webhook] Processing incoming interactive reply from ${fromPhone}: "${messageText}"`);
         } else if (msg.type === 'image') {
