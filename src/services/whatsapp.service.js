@@ -239,7 +239,8 @@ const sendInteractiveMessage = async (toPhoneNumber, bodyText, options, customPh
         const rows = validOptions.slice(0, 10).map((opt, idx) => {
             const cleanOpt = opt.trim();
             const rowTitle = cleanOpt.length > 24 ? cleanOpt.substring(0, 21) + '...' : cleanOpt;
-            const rowDesc = cleanOpt.length > 24 ? cleanOpt.substring(0, 72) : '';
+            // Include full option text in description (up to 72 chars) so full text is available to WIRA AI
+            const rowDesc = cleanOpt.length > 24 ? (cleanOpt.length > 72 ? cleanOpt.substring(0, 69) + '...' : cleanOpt) : '';
 
             const rowObj = {
                 id: `opt_${idx + 1}_${Date.now()}`,

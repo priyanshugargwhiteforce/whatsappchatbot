@@ -81,7 +81,8 @@ const processIncomingMessage = async (body) => {
             if (interactive?.type === 'button_reply') {
                 messageText = interactive.button_reply?.title || '';
             } else if (interactive?.type === 'list_reply') {
-                messageText = interactive.list_reply?.title || '';
+                // Prefer description (which contains the full untruncated sentence) over truncated title
+                messageText = interactive.list_reply?.description || interactive.list_reply?.title || '';
             }
             console.log(`[Webhook] Processing incoming interactive reply from ${fromPhone}: "${messageText}"`);
         } else if (msg.type === 'image') {
