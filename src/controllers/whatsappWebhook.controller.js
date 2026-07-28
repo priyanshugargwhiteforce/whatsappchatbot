@@ -54,8 +54,8 @@ const processIncomingMessage = async (body) => {
             return;
         }
 
-        // 3. Process text, image, document, audio, and location messages
-        const allowedTypes = ['text', 'image', 'document', 'audio', 'location'];
+        // 3. Process text, image, document, audio, location, and interactive messages
+        const allowedTypes = ['text', 'image', 'document', 'audio', 'location', 'interactive'];
         if (!allowedTypes.includes(msg.type)) {
             console.log(`[Webhook] Ignoring unsupported message type: ${msg.type}`);
             return;
@@ -76,6 +76,14 @@ const processIncomingMessage = async (body) => {
 
         if (msg.type === 'text') {
             messageText = msg.text?.body || '';
+        } else if (msg.type === 'interactive') {
+            const interactive = msg.interactive;
+            if (interactive?.type === 'button_reply') {
+                messageText = interactive.button_reply?.title || '';
+            } else if (interactive?.type === 'list_reply') {
+                messageText = interactive.list_reply?.title || '';
+            }
+            console.log(`[Webhook] Processing incoming interactive reply from ${fromPhone}: "${messageText}"`);
         } else if (msg.type === 'image') {
             const mediaId = msg.image?.id;
             const caption = msg.image?.caption || '';
@@ -239,23 +247,49 @@ const processIncomingMessage = async (body) => {
             }
         }
 
-        // 8. Convert WIRA response to WhatsApp-friendly text
-        const formattedReply = whatsappService.formatWiraResponse(wiraResponse.data);
+        // 8. Send response back to the WhatsApp user (Interactive Buttons/List if options exist)
+        const optionsList = wiraResponse.data?.options;
+        const hasOptions = Array.isArray(optionsList) && optionsList.filter(o => o && typeof o === 'string' && o.trim() !== '').length > 0;
 
-        // 9. Send response back to the same WhatsApp user
-        console.log(`[WhatsApp] Sending reply to ${fromPhone}: "${formattedReply.replace(/\n/g, ' ')}"`);
-        const metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
+        let formattedReply;
+        let metaRes;
+        let outgoingMsgType = 'text';
+
+        if (hasOptions) {
+            // Format main text WITHOUT duplicating options inside text body
+            formattedReply = whatsappService.formatWiraResponse(wiraResponse.data, false);
+            
+            try {
+                // If main body text is very long (> 1000 chars), send body text first, then send options button/list
+                if (formattedReply.length > 1000) {
+                    await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
+                    console.log(`[WhatsApp] Sent long text body, now sending interactive options to ${fromPhone}...`);
+                    metaRes = await whatsappService.sendInteractiveMessage(fromPhone, "Please choose an option below:", optionsList, phoneId);
+                } else {
+                    metaRes = await whatsappService.sendInteractiveMessage(fromPhone, formattedReply, optionsList, phoneId);
+                }
+                outgoingMsgType = 'interactive';
+            } catch (interactiveErr) {
+                console.warn(`[Webhook Error] Failed to send interactive message (${interactiveErr.message}). Falling back to text message.`);
+                formattedReply = whatsappService.formatWiraResponse(wiraResponse.data, true);
+                metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
+            }
+        } else {
+            formattedReply = whatsappService.formatWiraResponse(wiraResponse.data, true);
+            console.log(`[WhatsApp] Sending reply to ${fromPhone}: "${formattedReply.replace(/\n/g, ' ')}"`);
+            metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
+        }
         
-        // 10. Extract Meta outgoing message ID if available, otherwise construct one
+        // 9. Extract Meta outgoing message ID
         const outgoingMessageId = metaRes?.messages?.[0]?.id || `out_${messageId}`;
-        console.log(`[WhatsApp] Message sent: ${outgoingMessageId}`);
+        console.log(`[WhatsApp] Message sent (${outgoingMsgType}): ${outgoingMessageId}`);
 
-        // 11. Log outgoing message
+        // 10. Log outgoing message
         await messageLogModel.logMessage({
             whatsappNumber: fromPhone,
             messageId: outgoingMessageId,
             direction: 'outgoing',
-            messageType: 'text',
+            messageType: outgoingMsgType,
             messageText: formattedReply,
             rawPayload: metaRes || {}
         });
@@ -306,7 +340,55 @@ const receiveWebhook = (req, res) => {
     }
 };
 
+/**
+ * Direct API to send a WhatsApp text message to any recipient phone number
+ */
+const sendDirectMessage = async (req, res) => {
+    try {
+        const { to, message, phoneId } = req.body;
+
+        if (!to || !message) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields: 'to' (phone number) and 'message' (text content) are required."
+            });
+        }
+
+        console.log(`[Send Direct API] Request to send message to ${to}`);
+        const result = await whatsappService.sendTextMessage(to, message, phoneId);
+
+        // Log outgoing message to DB
+        const outgoingMessageId = result?.messages?.[0]?.id || `direct_${Date.now()}`;
+        await messageLogModel.logMessage({
+            whatsappNumber: to,
+            messageId: outgoingMessageId,
+            direction: 'outgoing',
+            messageType: 'text',
+            messageText: message,
+            rawPayload: result || {}
+        }).catch(err => console.error('[Send Direct API DB Log Error]', err.message));
+
+        return res.status(200).json({
+            success: true,
+            message: 'WhatsApp message sent successfully.',
+            data: {
+                to,
+                messageId: outgoingMessageId,
+                metaResponse: result
+            }
+        });
+    } catch (error) {
+        console.error('[Send Direct API Error]', error.message);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to send WhatsApp message.'
+        });
+    }
+};
+
 module.exports = {
     verifyWebhook,
-    receiveWebhook
+    receiveWebhook,
+    sendDirectMessage
 };
+

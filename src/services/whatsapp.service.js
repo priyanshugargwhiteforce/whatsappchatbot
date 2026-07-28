@@ -6,10 +6,11 @@ const env = require('../config/env');
 /**
  * Format WIRA AI response data to WhatsApp-friendly message text
  * @param {object} data The response data from WIRA
+ * @param {boolean} [includeOptionsText=true] Whether to append options as text lines
  * @returns {string} Formatted text
  */
-const formatWiraResponse = (data) => {
-    console.log("Line10 whatsapp.services.js", data, "wira response data,", data.jobs)
+const formatWiraResponse = (data, includeOptionsText = true) => {
+    console.log("Line10 whatsapp.services.js", data, "wira response data,", data?.jobs);
     if (!data) {
         return 'How can I help you today?';
     }
@@ -20,7 +21,7 @@ const formatWiraResponse = (data) => {
         text = 'How can I help you today?'; // Fallback message
     }
 
-    if (data.options && Array.isArray(data.options) && data.options.length > 0) {
+    if (includeOptionsText && data.options && Array.isArray(data.options) && data.options.length > 0) {
         text += '\n\n*Options:*';
         data.options.forEach((opt, idx) => {
             text += `\n${idx + 1}. ${opt}`;
@@ -171,6 +172,127 @@ const sendTextMessage = async (toPhoneNumber, messageBody, customPhoneNumberId =
     }
 };
 
+/**
+ * Send interactive button or list message using Meta Cloud API
+ * @param {string} toPhoneNumber Recipient phone number (wa_id)
+ * @param {string} bodyText Main text content for the interactive message (max 1024 chars)
+ * @param {Array<string>} options List of options
+ * @param {string} [customPhoneNumberId] Webhook-sourced phone number ID
+ * @returns {Promise<object>} Meta API response data
+ */
+const sendInteractiveMessage = async (toPhoneNumber, bodyText, options, customPhoneNumberId = null) => {
+    const phoneId = customPhoneNumberId || env.WHATSAPP_PHONE_NUMBER_ID;
+    const token = env.WHATSAPP_ACCESS_TOKEN;
+    const version = env.WHATSAPP_API_VERSION;
+
+    if (!phoneId) {
+        throw new Error('WhatsApp Phone Number ID is missing.');
+    }
+    if (!token || token === 'placeholder_access_token_here') {
+        throw new Error('WhatsApp Access Token is missing or placeholder.');
+    }
+
+    const url = `https://graph.facebook.com/${version}/${phoneId}/messages`;
+
+    const textBody = (bodyText || 'Please select an option below:').trim().substring(0, 1000);
+    const validOptions = (options || []).filter(opt => opt && typeof opt === 'string' && opt.trim() !== '');
+
+    if (validOptions.length === 0) {
+        return sendTextMessage(toPhoneNumber, textBody, customPhoneNumberId);
+    }
+
+    // Decide between quick reply buttons (<= 3 options and title <= 20 chars) vs list (4 to 10 options or long titles)
+    const canUseButtons = validOptions.length <= 3 && validOptions.every(opt => opt.trim().length <= 20);
+
+    let interactivePayload;
+
+    if (canUseButtons) {
+        // Quick Reply Buttons (Max 3 buttons)
+        const buttons = validOptions.map((opt, idx) => {
+            const cleanOpt = opt.trim();
+            return {
+                type: 'reply',
+                reply: {
+                    id: `btn_${idx + 1}_${Date.now()}`,
+                    title: cleanOpt.substring(0, 20)
+                }
+            };
+        });
+
+        interactivePayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: toPhoneNumber,
+            type: 'interactive',
+            interactive: {
+                type: 'button',
+                body: {
+                    text: textBody
+                },
+                action: {
+                    buttons: buttons
+                }
+            }
+        };
+    } else {
+        // List Message (Up to 10 rows)
+        const rows = validOptions.slice(0, 10).map((opt, idx) => {
+            const cleanOpt = opt.trim();
+            const rowTitle = cleanOpt.length > 24 ? cleanOpt.substring(0, 21) + '...' : cleanOpt;
+            const rowDesc = cleanOpt.length > 24 ? cleanOpt.substring(0, 72) : '';
+
+            const rowObj = {
+                id: `opt_${idx + 1}_${Date.now()}`,
+                title: rowTitle
+            };
+            if (rowDesc) {
+                rowObj.description = rowDesc;
+            }
+            return rowObj;
+        });
+
+        interactivePayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: toPhoneNumber,
+            type: 'interactive',
+            interactive: {
+                type: 'list',
+                body: {
+                    text: textBody
+                },
+                action: {
+                    button: 'Select Option',
+                    sections: [
+                        {
+                            title: 'Options',
+                            rows: rows
+                        }
+                    ]
+                }
+            }
+        };
+    }
+
+    try {
+        console.log(`[WhatsApp Service] Sending interactive ${canUseButtons ? 'button' : 'list'} message to ${toPhoneNumber}...`);
+        const response = await axios.post(url, interactivePayload, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        return response.data;
+    } catch (error) {
+        const statusCode = error.response?.status;
+        const errorDetails = error.response?.data?.error;
+        console.error(`[WhatsApp Service Error] Failed to send interactive message. HTTP Status: ${statusCode || 'N/A'}. Code: ${errorDetails?.code || 'N/A'}. Message: ${errorDetails?.message || error.message}`);
+
+        throw new Error(errorDetails?.message || error.message);
+    }
+};
+
 const mimeToExt = {
     'image/jpeg': 'jpg',
     'image/jpg': 'jpg',
@@ -284,6 +406,7 @@ const downloadWhatsAppMedia = async (mediaId, originalFilename = null) => {
 module.exports = {
     formatWiraResponse,
     sendTextMessage,
+    sendInteractiveMessage,
     downloadWhatsAppMedia
 };
 

@@ -8,6 +8,9 @@ const { validateForwardedWebhook } = require('../middleware/auth');
 router.get('/webhook', controller.verifyWebhook);
 router.post('/webhook', validateForwardedWebhook, controller.receiveWebhook);
 
+// Direct WhatsApp Send Message API (For internal app integration & Postman)
+router.post('/send-message', validateForwardedWebhook, controller.sendDirectMessage);
+
 // Health/debug endpoint for development verification
 router.get('/health', (req, res) => {
     // Only return detailed info if not in production to protect credentials info exposure
@@ -39,7 +42,7 @@ if (env.NODE_ENV !== 'production') {
         let payload = req.body;
 
         // If simplified body format is sent, transform it into Meta payload structure
-        if (payload.from && (payload.text || payload.type === 'image' || payload.type === 'document' || payload.type === 'audio' || payload.type === 'location')) {
+        if (payload.from && (payload.text || payload.type === 'image' || payload.type === 'document' || payload.type === 'audio' || payload.type === 'location' || payload.type === 'interactive')) {
             const mockMsgId = payload.messageId || `test_wamid_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
             
             let messageObj = {
@@ -52,6 +55,19 @@ if (env.NODE_ENV !== 'production') {
             if (messageObj.type === 'text') {
                 messageObj.text = {
                     body: payload.text
+                };
+            } else if (messageObj.type === 'interactive') {
+                const subType = payload.interactiveType || 'button_reply';
+                messageObj.interactive = {
+                    type: subType,
+                    button_reply: subType === 'button_reply' ? {
+                        id: payload.buttonId || 'test_btn_1',
+                        title: payload.text || payload.buttonTitle || 'Hi, Yes'
+                    } : undefined,
+                    list_reply: subType === 'list_reply' ? {
+                        id: payload.listId || 'test_list_1',
+                        title: payload.text || payload.listTitle || 'Selected Option'
+                    } : undefined
                 };
             } else if (messageObj.type === 'image') {
                 messageObj.image = {
