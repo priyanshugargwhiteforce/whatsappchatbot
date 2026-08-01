@@ -49,6 +49,10 @@ const replyChatbot = async (sessionId, content) => {
     }
 };
 
+const wiraChatBot = async () =>{
+
+};
+
 module.exports = {
     startChatbot,
     replyChatbot

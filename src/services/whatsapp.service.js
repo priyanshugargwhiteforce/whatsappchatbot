@@ -417,10 +417,60 @@ const downloadWhatsAppMedia = async (mediaId, originalFilename = null) => {
     };
 };
 
+/**
+ * Send Read Receipt (Blue Ticks) and Typing Indicator ("typing...") for an incoming message
+ * @param {string} messageId Meta incoming message ID (wamid)
+ * @param {string} [customPhoneNumberId] Webhook-sourced phone number ID
+ * @returns {Promise<object|null>} Meta API response data or null on failure
+ */
+const markAsReadAndTyping = async (messageId, customPhoneNumberId = null) => {
+    const phoneId = customPhoneNumberId || env.WHATSAPP_PHONE_NUMBER_ID;
+    const token = env.WHATSAPP_ACCESS_TOKEN;
+    const version = env.WHATSAPP_API_VERSION;
+
+    if (!phoneId || !token || token === 'placeholder_access_token_here' || !messageId) {
+        return null;
+    }
+
+    // Support testing mode with mock message IDs
+    if (messageId.startsWith('test_') || messageId.startsWith('mock_')) {
+        console.log(`[WhatsApp Service] Simulating Read Receipt & Typing Indicator for mock message ID: ${messageId}`);
+        return { success: true, mock: true };
+    }
+
+    const url = `https://graph.facebook.com/${version}/${phoneId}/messages`;
+
+    try {
+        console.log(`[WhatsApp Service] Sending Read Receipt & Typing Indicator for message ID: ${messageId}...`);
+        const response = await axios.post(url, {
+            messaging_product: 'whatsapp',
+            status: 'read',
+            message_id: messageId,
+            typing_indicator: {
+                type: 'text'
+            }
+        }, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        return response.data;
+    } catch (error) {
+        const statusCode = error.response?.status;
+        const errorDetails = error.response?.data?.error;
+        console.warn(`[WhatsApp Service Warning] Failed to send read receipt/typing indicator. HTTP Status: ${statusCode || 'N/A'}. Message: ${errorDetails?.message || error.message}`);
+        return null;
+    }
+};
+
 module.exports = {
     formatWiraResponse,
     sendTextMessage,
     sendInteractiveMessage,
-    downloadWhatsAppMedia
+    downloadWhatsAppMedia,
+    markAsReadAndTyping
 };
+
 

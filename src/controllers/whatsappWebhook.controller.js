@@ -215,6 +215,13 @@ const processIncomingMessage = async (body) => {
             throw dbErr;
         }
 
+        // 6.5. Send read receipt (blue tick) and start typing indicator while AI processes
+        try {
+            await whatsappService.markAsReadAndTyping(messageId, phoneId);
+        } catch (statusErr) {
+            console.warn('[Webhook Warning] Failed to trigger read receipt or typing indicator:', statusErr.message);
+        }
+
         // 7. Check whether this WhatsApp number already has a WIRA session
         let activeSession = await sessionModel.findActiveSession(fromPhone);
         let wiraResponse;
