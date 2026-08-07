@@ -78,6 +78,8 @@ const saveWiraFile = async ({ fileBuffer, filename, mimeType }) => {
     }
 };
 
+
+// Old Wira Chat Function For if New Wira Not Response Old are instergrated in Main Chatbot
 /**
  * Legacy: Initialize chatbot session with WIRA AI (/start-chatbot)
  * @param {string} webName The web name (e.g. 'White Force')
