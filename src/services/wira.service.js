@@ -4,7 +4,7 @@ const env = require('../config/env');
 // Axios client preconfigured for WIRA Brain API calls
 const wiraApiClient = axios.create({
     baseURL: env.WIRA_BRAIN_BASE_URL || 'https://astro-buddy.in/AI',
-    timeout: 15000,
+    timeout: env.WIRA_API_TIMEOUT_MS || 10000,
     headers: {
         'Content-Type': 'application/json',
         'x-api-key': env.WIRA_BRAIN_API_KEY || 'wiraai_api_16072026_X9mQ7vLp2Kf8RsW4YcT6Zn1A'
