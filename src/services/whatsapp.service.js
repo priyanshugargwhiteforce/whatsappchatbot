@@ -227,7 +227,8 @@ const sendInteractiveMessage = async (toPhoneNumber, bodyText, options, customPh
             return {
                 type: 'reply',
                 reply: {
-                    id: cleanOpt.substring(0, 200)
+                    id: cleanOpt.substring(0, 200),
+                    title: cleanOpt.substring(0, 0)
                 }
             };
         });
