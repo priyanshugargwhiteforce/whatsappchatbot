@@ -53,8 +53,8 @@ Below are the variables defined in `.env`:
 - `META_VERIFY_TOKEN`: A custom string token you choose for Meta webhook configuration.
 - `WHATSAPP_ACCESS_TOKEN`: The System User Access Token from your Meta Developer console.
 - `WHATSAPP_PHONE_NUMBER_ID`: The Phone Number ID associated with your WhatsApp business number.
-- `WHATSAPP_API_VERSION`: API version for Meta Cloud API calls (defaults to `v24.0`).
-- `WIRA_BASE_URL`: Base URL for WIRA AI chatbot APIs (`https://astro-buddy.in/AI`).
+- `WIRA_BRAIN_BASE_URL`: Base URL for WIRA AI chatbot APIs (`https://astro-buddy.in/AI`).
+- `WIRA_INTERNAL_SECRET`: Secret header key for internal webhooks and trigger API authentication.
 - `WIRA_WEB_NAME`: Chatbot name filter (defaults to `White Force`).
 - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: MySQL connection parameters.
 

@@ -222,59 +222,41 @@ const processIncomingMessage = async (body) => {
             console.warn('[Webhook Warning] Failed to trigger read receipt or typing indicator:', statusErr.message);
         }
 
-        // 7. Check whether this WhatsApp number already has a WIRA session
-        let activeSession = await sessionModel.findActiveSession(fromPhone);
+        // 7. Forward incoming message to WIRA Brain (/whatsapp-to-wira)
         let wiraResponse;
-
-        if (!activeSession) {
-            console.log(`[WIRA] Starting session for ${fromPhone}`);
-            wiraResponse = await wiraService.startChatbot(env.WIRA_WEB_NAME);
-            console.log(`[WIRA Response] startChatbot response content: "${wiraResponse?.data?.content}"`);
-            if (wiraResponse && wiraResponse.success && wiraResponse.id) {
-                const newSessionId = wiraResponse.id;
-                console.log(`[Webhook] Created new WIRA session ${newSessionId} for ${fromPhone}`);
-                await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
-
-                // If first message is a query (not a basic greeting), reply immediately
-                const isGreeting = /^(hi|hello|hey|hola|start|get started|hii|helo|hlo)$/i.test(messageText.trim());
-                if (!isGreeting) {
-                    console.log(`[WIRA] First message is a query ("${messageText}"). Replying immediately in new session...`);
-                    wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
-                    console.log(`[WIRA Response] replyChatbot response content: "${wiraResponse?.data?.content}"`);
-                }
-            } else {
-                throw new Error(wiraResponse?.message || 'Failed to start WIRA chatbot session.');
-            }
-        } else {
-            console.log(`[WIRA] Replying session ${activeSession.session_id} for ${fromPhone}`);
+        try {
+            console.log(`[WIRA Brain] Forwarding incoming WhatsApp message from ${fromPhone}...`);
+            wiraResponse = await wiraService.sendToWiraBrain({
+                phone: fromPhone,
+                whatsappPayload: msg,
+                whatsappId: messageId,
+                content: messageText,
+                files: mediaInfo ? [mediaInfo] : [],
+                metadata: { phoneId }
+            });
+            console.log(`[WIRA Brain Response] Content for ${fromPhone}: "${wiraResponse?.data?.content || wiraResponse?.content || ''}"`);
+        } catch (wiraErr) {
+            console.error(`[Webhook WIRA Brain Error] ${wiraErr.message}. Attempting legacy session fallback...`);
             try {
-                wiraResponse = await wiraService.replyChatbot(activeSession.session_id, messageText);
-                console.log(`[WIRA Response] replyChatbot response content: "${wiraResponse?.data?.content}"`);
-            } catch (replyError) {
-                console.warn(`[Webhook] WIRA session reply failed: ${replyError.message}. Restarting session.`);
-                
-                // Fallback: If session expired or was rejected, start a new chatbot session dynamically
-                console.log(`[WIRA] Starting session (fallback) for ${fromPhone}`);
-                wiraResponse = await wiraService.startChatbot(env.WIRA_WEB_NAME);
-                console.log(`[WIRA Response] Fallback startChatbot response content: "${wiraResponse?.data?.content}"`);
-                if (wiraResponse && wiraResponse.success && wiraResponse.id) {
-                    const newSessionId = wiraResponse.id;
-                    await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
-
-                    const isGreeting = /^(hi|hello|hey|hola|start|get started|hii|helo)$/i.test(messageText.trim());
-                    if (!isGreeting) {
-                        console.log(`[WIRA] Fallback first message is a query ("${messageText}"). Replying immediately...`);
-                        wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
-                        console.log(`[WIRA Response] Fallback replyChatbot response content: "${wiraResponse?.data?.content}"`);
+                let activeSession = await sessionModel.findActiveSession(fromPhone);
+                if (!activeSession) {
+                    wiraResponse = await wiraService.startChatbot(env.WIRA_WEB_NAME);
+                    if (wiraResponse?.id) {
+                        await sessionModel.saveSession(fromPhone, wiraResponse.id, env.WIRA_WEB_NAME);
+                        wiraResponse = await wiraService.replyChatbot(wiraResponse.id, messageText);
                     }
                 } else {
-                    throw new Error(wiraResponse?.message || 'Failed to restart WIRA chatbot session.');
+                    wiraResponse = await wiraService.replyChatbot(activeSession.session_id, messageText);
                 }
+            } catch (fallbackErr) {
+                console.error('[Webhook Legacy Fallback Error]', fallbackErr.message);
+                throw wiraErr;
             }
         }
 
         // 8. Send response back to the WhatsApp user (Interactive Buttons/List if options exist)
-        const optionsList = wiraResponse.data?.options;
+        const responseData = wiraResponse?.data || wiraResponse || {};
+        const optionsList = responseData?.options;
         const hasOptions = Array.isArray(optionsList) && optionsList.filter(o => o && typeof o === 'string' && o.trim() !== '').length > 0;
 
         let formattedReply;
@@ -283,7 +265,7 @@ const processIncomingMessage = async (body) => {
 
         if (hasOptions) {
             // Format main text WITHOUT duplicating options inside text body
-            formattedReply = whatsappService.formatWiraResponse(wiraResponse.data, false);
+            formattedReply = whatsappService.formatWiraResponse(responseData, false);
             
             try {
                 // If main body text is very long (> 1000 chars), send body text first, then send options button/list
@@ -297,11 +279,11 @@ const processIncomingMessage = async (body) => {
                 outgoingMsgType = 'interactive';
             } catch (interactiveErr) {
                 console.warn(`[Webhook Error] Failed to send interactive message (${interactiveErr.message}). Falling back to text message.`);
-                formattedReply = whatsappService.formatWiraResponse(wiraResponse.data, true);
+                formattedReply = whatsappService.formatWiraResponse(responseData, true);
                 metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
             }
         } else {
-            formattedReply = whatsappService.formatWiraResponse(wiraResponse.data, true);
+            formattedReply = whatsappService.formatWiraResponse(responseData, true);
             console.log(`[WhatsApp] Sending reply to ${fromPhone}: "${formattedReply.replace(/\n/g, ' ')}"`);
             metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
         }
@@ -320,8 +302,8 @@ const processIncomingMessage = async (body) => {
             rawPayload: metaRes || {}
         });
 
-        // 12. Check if the session is terminated
-        const isTerminated = wiraResponse.data?.terminated === true || wiraResponse.terminated === true;
+        // 11. Check if the session is terminated
+        const isTerminated = responseData?.terminated === true || wiraResponse?.terminated === true;
         if (isTerminated) {
             console.log(`[Webhook] WIRA response flagged session termination for ${fromPhone}. Terminating...`);
             await sessionModel.terminateSession(fromPhone);
@@ -363,6 +345,89 @@ const receiveWebhook = (req, res) => {
         if (!res.headersSent) {
             res.status(500).send(error.message);
         }
+    }
+};
+
+/**
+ * Direct API endpoint for WIRA Brain to hit and trigger WhatsApp messages (/wira-hit-msg)
+ */
+const wiraHitMsg = async (req, res) => {
+    try {
+        console.log('[WIRA Hit Msg API] Incoming request payload:', JSON.stringify(req.body, null, 2));
+
+        const bodyData = req.body.data || {};
+        const recipientPhone = bodyData.phone || req.body.phone;
+        const innerPayload = bodyData.data || bodyData || req.body;
+        const phoneId = req.body.phoneId || env.WHATSAPP_PHONE_NUMBER_ID;
+
+        if (!recipientPhone) {
+            return res.status(400).json({
+                statusCode: 400,
+                success: false,
+                message: "Error sending message: 'phone' (recipient number) is required.",
+                data: null
+            });
+        }
+
+        const optionsList = innerPayload?.options;
+        const hasOptions = Array.isArray(optionsList) && optionsList.filter(o => o && typeof o === 'string' && o.trim() !== '').length > 0;
+
+        let formattedReply;
+        let metaRes;
+        let outgoingMsgType = 'text';
+
+        if (hasOptions) {
+            formattedReply = whatsappService.formatWiraResponse(innerPayload, false);
+            try {
+                if (formattedReply.length > 1000) {
+                    await whatsappService.sendTextMessage(recipientPhone, formattedReply, phoneId);
+                    metaRes = await whatsappService.sendInteractiveMessage(recipientPhone, "Please choose an option below:", optionsList, phoneId);
+                } else {
+                    metaRes = await whatsappService.sendInteractiveMessage(recipientPhone, formattedReply, optionsList, phoneId);
+                }
+                outgoingMsgType = 'interactive';
+            } catch (interactiveErr) {
+                console.warn(`[WIRA Hit Msg Error] Failed interactive send (${interactiveErr.message}), falling back to text message.`);
+                formattedReply = whatsappService.formatWiraResponse(innerPayload, true);
+                metaRes = await whatsappService.sendTextMessage(recipientPhone, formattedReply, phoneId);
+            }
+        } else {
+            formattedReply = whatsappService.formatWiraResponse(innerPayload, true);
+            console.log(`[WIRA Hit Msg] Sending message to ${recipientPhone}: "${formattedReply.replace(/\n/g, ' ')}"`);
+            metaRes = await whatsappService.sendTextMessage(recipientPhone, formattedReply, phoneId);
+        }
+
+        const outgoingMessageId = metaRes?.messages?.[0]?.id || `wira_hit_${Date.now()}`;
+
+        // Log outgoing message to DB
+        await messageLogModel.logMessage({
+            whatsappNumber: recipientPhone,
+            messageId: outgoingMessageId,
+            direction: 'outgoing',
+            messageType: outgoingMsgType,
+            messageText: formattedReply,
+            rawPayload: metaRes || {}
+        }).catch(err => console.error('[WIRA Hit Msg DB Log Error]', err.message));
+
+        return res.status(200).json({
+            statusCode: 200,
+            success: true,
+            message: "Whatsapp message sent successfully",
+            data: {
+                phone: recipientPhone,
+                messageId: outgoingMessageId,
+                metaResponse: metaRes
+            }
+        });
+
+    } catch (error) {
+        console.error('[WIRA Hit Msg Error]', error.message);
+        return res.status(500).json({
+            statusCode: 500,
+            success: false,
+            message: error.message || "Error sending message to whatsapp user.",
+            data: null
+        });
     }
 };
 
@@ -415,6 +480,7 @@ const sendDirectMessage = async (req, res) => {
 module.exports = {
     verifyWebhook,
     receiveWebhook,
+    wiraHitMsg,
     sendDirectMessage
 };
 

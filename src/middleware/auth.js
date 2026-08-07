@@ -24,4 +24,31 @@ const validateForwardedWebhook = (req, res, next) => {
     next();
 };
 
-module.exports = { validateForwardedWebhook };
+/**
+ * Middleware to validate x-api-key header for incoming WIRA Brain calls (e.g. /wira-hit-msg)
+ */
+const validateApiKey = (req, res, next) => {
+    const incomingApiKey = req.headers['x-api-key'] || req.headers['x-wira-internal-secret'];
+    const expectedApiKey = env.WIRA_INTERNAL_SECRET;
+
+    // In development mode, allow testing if key is not provided
+    if (env.NODE_ENV !== 'production' && !incomingApiKey) {
+        return next();
+    }
+
+    if (!expectedApiKey || incomingApiKey !== expectedApiKey) {
+        console.warn(`[Unauthorized API Request] Invalid x-api-key from IP: ${req.ip}`);
+        return res.status(401).json({
+            statusCode: 401,
+            success: false,
+            message: 'Unauthorized: Invalid or missing x-api-key header.'
+        });
+    }
+
+    next();
+};
+
+module.exports = { 
+    validateForwardedWebhook,
+    validateApiKey
+};

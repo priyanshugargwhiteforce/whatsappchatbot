@@ -2,11 +2,14 @@ const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/whatsappWebhook.controller');
 const env = require('../config/env');
-const { validateForwardedWebhook } = require('../middleware/auth');
+const { validateForwardedWebhook, validateApiKey } = require('../middleware/auth');
 
 // GET and POST webhooks
 router.get('/webhook', controller.verifyWebhook);
 router.post('/webhook', validateForwardedWebhook, controller.receiveWebhook);
+
+// WIRA Brain trigger endpoint (WIRA Brain -> WhatsApp Bot)
+router.post('/wira-hit-msg', validateApiKey, controller.wiraHitMsg);
 
 // Direct WhatsApp Send Message API (For internal app integration & Postman)
 router.post('/send-message', validateForwardedWebhook, controller.sendDirectMessage);

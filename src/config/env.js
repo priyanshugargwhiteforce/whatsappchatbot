@@ -29,7 +29,8 @@ module.exports = {
     WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
     WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
     WHATSAPP_API_VERSION: process.env.WHATSAPP_API_VERSION || 'v20.0',
-    WIRA_BASE_URL: process.env.WIRA_BASE_URL || 'https://astro-buddy.in/AI',
+    WIRA_BRAIN_BASE_URL: process.env.WIRA_BRAIN_BASE_URL || 'https://astro-buddy.in/AI',
+    WIRA_BRAIN_API_KEY: process.env.WIRA_BRAIN_API_KEY || 'wiraai_api_16072026_X9mQ7vLp2Kf8RsW4YcT6Zn1A',
     WIRA_WEB_NAME: process.env.WIRA_WEB_NAME || 'White Force',
     WIRA_INTERNAL_SECRET: process.env.WIRA_INTERNAL_SECRET,
     database: {
