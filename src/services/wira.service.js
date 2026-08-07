@@ -43,8 +43,13 @@ const sendToWiraBrain = async ({ phone, whatsappPayload = {}, whatsappId = '', c
         console.log(`[WIRA Service] WIRA Brain response received for ${phone}`);
         return response.data;
     } catch (error) {
-        console.error('[WIRA Service] sendToWiraBrain API error:', error.message);
-        throw new Error(error.response?.data?.message || error.message);
+        const errorMsg = error.response?.data?.message || error.message;
+        const statusCode = error.response?.status || 'N/A';
+        console.error(`[WIRA Service] sendToWiraBrain API error (Status ${statusCode}):`, errorMsg);
+        if (error.response?.data) {
+            console.error('[WIRA Service Response Data]', JSON.stringify(error.response.data));
+        }
+        throw new Error(errorMsg);
     }
 };
 

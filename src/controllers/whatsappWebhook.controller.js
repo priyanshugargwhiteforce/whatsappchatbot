@@ -236,20 +236,39 @@ const processIncomingMessage = async (body) => {
             });
             console.log(`[WIRA Brain Response] Content for ${fromPhone}: "${wiraResponse?.data?.content || wiraResponse?.content || ''}"`);
         } catch (wiraErr) {
-            console.error(`[Webhook WIRA Brain Error] ${wiraErr.message}. Attempting legacy session fallback...`);
+            console.warn(`[Webhook WIRA Brain Warning] ${wiraErr.message}. Attempting fallback to chatbot session...`);
             try {
                 let activeSession = await sessionModel.findActiveSession(fromPhone);
-                if (!activeSession) {
-                    wiraResponse = await wiraService.startChatbot(env.WIRA_WEB_NAME);
-                    if (wiraResponse?.id) {
-                        await sessionModel.saveSession(fromPhone, wiraResponse.id, env.WIRA_WEB_NAME);
-                        wiraResponse = await wiraService.replyChatbot(wiraResponse.id, messageText);
+                let sessionId = activeSession?.session_id;
+
+                if (!sessionId) {
+                    console.log(`[WIRA Fallback] No active session for ${fromPhone}. Initializing new session...`);
+                    const startRes = await wiraService.startChatbot(env.WIRA_WEB_NAME);
+                    if (startRes && startRes.id) {
+                        sessionId = startRes.id;
+                        await sessionModel.saveSession(fromPhone, sessionId, env.WIRA_WEB_NAME);
+                        wiraResponse = startRes;
                     }
-                } else {
-                    wiraResponse = await wiraService.replyChatbot(activeSession.session_id, messageText);
+                }
+
+                if (sessionId) {
+                    try {
+                        console.log(`[WIRA Fallback] Sending query to session ${sessionId} for ${fromPhone}...`);
+                        wiraResponse = await wiraService.replyChatbot(sessionId, messageText);
+                    } catch (replyErr) {
+                        console.warn(`[WIRA Fallback] Session ${sessionId} reply failed (${replyErr.message}). Restarting fresh session...`);
+                        const startRes = await wiraService.startChatbot(env.WIRA_WEB_NAME);
+                        if (startRes && startRes.id) {
+                            const newSessionId = startRes.id;
+                            await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
+                            wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
+                        } else {
+                            throw replyErr;
+                        }
+                    }
                 }
             } catch (fallbackErr) {
-                console.error('[Webhook Legacy Fallback Error]', fallbackErr.message);
+                console.error('[Webhook Fallback Error] Unable to complete fallback reply:', fallbackErr.message);
                 throw wiraErr;
             }
         }
