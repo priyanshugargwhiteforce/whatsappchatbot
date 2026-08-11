@@ -114,7 +114,7 @@ const replyChatbot = async (sessionId, content) => {
 };
 
 module.exports = {
-    sendToWiraBrain,
+    // sendToWiraBrain,
     saveWiraFile,
     startChatbot,
     replyChatbot
