@@ -222,8 +222,13 @@ const processIncomingMessage = async (body) => {
             console.warn('[Webhook Warning] Failed to trigger read receipt or typing indicator:', statusErr.message);
         }
 
-        // 7. Forward incoming message to WIRA Brain (/whatsapp-to-wira)
+        // 7. Forward incoming message to WIRA AI (Legacy Chatbot Session)
+        // NOTE: WIRA Brain (/whatsapp-to-wira via sendToWiraBrain) is temporarily commented out as WIRA Brain is under active development.
+        // We are using the legacy send & reply WIRA Chatbot service (/start-chatbot & /reply-chatbot) directly.
         let wiraResponse;
+
+        /*
+        // --- TEMPORARILY COMMENTED OUT: WIRA Brain Integration ---
         try {
             console.log(`[WIRA Brain] Forwarding incoming WhatsApp message from ${fromPhone}...`);
             wiraResponse = await wiraService.sendToWiraBrain({
@@ -237,40 +242,43 @@ const processIncomingMessage = async (body) => {
             console.log(`[WIRA Brain Response] Content for ${fromPhone}: "${wiraResponse?.data?.content || wiraResponse?.content || ''}"`);
         } catch (wiraErr) {
             console.warn(`[Webhook WIRA Brain Warning] ${wiraErr.message}. Attempting fallback to chatbot session...`);
-            try {
-                let activeSession = await sessionModel.findActiveSession(fromPhone);
-                let sessionId = activeSession?.session_id;
+        }
+        // --- END TEMPORARILY COMMENTED OUT ---
+        */
 
-                if (!sessionId) {
-                    console.log(`[WIRA Fallback] No active session for ${fromPhone}. Initializing new session...`);
+        // --- Active Legacy WIRA Chatbot Session Flow ---
+        try {
+            let activeSession = await sessionModel.findActiveSession(fromPhone);
+            let sessionId = activeSession?.session_id;
+
+            if (!sessionId) {
+                console.log(`[WIRA Chatbot] No active session for ${fromPhone}. Initializing new session...`);
+                const startRes = await wiraService.startChatbot(env.WIRA_WEB_NAME);
+                if (startRes && startRes.id) {
+                    sessionId = startRes.id;
+                    await sessionModel.saveSession(fromPhone, sessionId, env.WIRA_WEB_NAME);
+                    wiraResponse = startRes;
+                }
+            }
+
+            if (sessionId) {
+                try {
+                    console.log(`[WIRA Chatbot] Sending query to session ${sessionId} for ${fromPhone}...`);
+                    wiraResponse = await wiraService.replyChatbot(sessionId, messageText);
+                } catch (replyErr) {
+                    console.warn(`[WIRA Chatbot] Session ${sessionId} reply failed (${replyErr.message}). Restarting fresh session...`);
                     const startRes = await wiraService.startChatbot(env.WIRA_WEB_NAME);
                     if (startRes && startRes.id) {
-                        sessionId = startRes.id;
-                        await sessionModel.saveSession(fromPhone, sessionId, env.WIRA_WEB_NAME);
-                        wiraResponse = startRes;
+                        const newSessionId = startRes.id;
+                        await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
+                        wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
+                    } else {
+                        throw replyErr;
                     }
                 }
-
-                if (sessionId) {
-                    try {
-                        console.log(`[WIRA Fallback] Sending query to session ${sessionId} for ${fromPhone}...`);
-                        wiraResponse = await wiraService.replyChatbot(sessionId, messageText);
-                    } catch (replyErr) {
-                        console.warn(`[WIRA Fallback] Session ${sessionId} reply failed (${replyErr.message}). Restarting fresh session...`);
-                        const startRes = await wiraService.startChatbot(env.WIRA_WEB_NAME);
-                        if (startRes && startRes.id) {
-                            const newSessionId = startRes.id;
-                            await sessionModel.saveSession(fromPhone, newSessionId, env.WIRA_WEB_NAME);
-                            wiraResponse = await wiraService.replyChatbot(newSessionId, messageText);
-                        } else {
-                            throw replyErr;
-                        }
-                    }
-                }
-            } catch (fallbackErr) {
-                console.error('[Webhook Fallback Error] Unable to complete fallback reply:', fallbackErr.message);
-                throw wiraErr;
             }
+        } catch (wiraErr) {
+            console.error('[Webhook WIRA Chatbot Error] Unable to complete chatbot reply:', wiraErr.message);
         }
 
         // 8. Send response back to the WhatsApp user (Interactive Buttons/List if options exist)
