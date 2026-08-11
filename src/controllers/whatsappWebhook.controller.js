@@ -89,18 +89,22 @@ const processIncomingMessage = async (body) => {
                 }
             } else if (interactive?.type === 'list_reply') {
                 const listReply = interactive.list_reply;
-                const replyDesc = listReply?.description || '';
-                const replyId = listReply?.id || '';
                 const replyTitle = listReply?.title || '';
+                const replyId = listReply?.id || '';
+                const replyDesc = listReply?.description || '';
 
-                // Prioritize full untruncated sentence: description first, then non-synthetic id, then title
-                if (replyDesc) {
-                    messageText = replyDesc;
-                } else if (replyId && !replyId.startsWith('opt_')) {
-                    messageText = replyId;
-                } else {
+                // Prioritize user selection title (e.g. "Java Developer"), then non-synthetic ID, then description
+                if (replyTitle) {
                     messageText = replyTitle;
+                } else if (replyId && !replyId.startsWith('opt_') && !replyId.startsWith('row_')) {
+                    messageText = replyId;
+                } else if (replyDesc) {
+                    messageText = replyDesc;
                 }
+            } else if (interactive?.type === 'nfm_reply') {
+                const nfmReply = interactive.nfm_reply;
+                const responseJson = nfmReply?.response_json;
+                messageText = typeof responseJson === 'string' ? responseJson : JSON.stringify(responseJson || {});
             }
             console.log(`[Webhook] Processing incoming interactive reply from ${fromPhone}: "${messageText}"`);
         } else if (msg.type === 'image') {
@@ -281,21 +285,57 @@ const processIncomingMessage = async (body) => {
             console.error('[Webhook WIRA Chatbot Error] Unable to complete chatbot reply:', wiraErr.message);
         }
 
-        // 8. Send response back to the WhatsApp user (Interactive Buttons/List if options exist)
+        // 8. Send response back to the WhatsApp user (Interactive Buttons/List/CTA URL)
         const responseData = wiraResponse?.data || wiraResponse || {};
         const optionsList = responseData?.options;
+        const linksList = responseData?.links;
         const hasOptions = Array.isArray(optionsList) && optionsList.filter(o => o && typeof o === 'string' && o.trim() !== '').length > 0;
+
+        // Extract primary link from links array or content
+        let primaryLink = null;
+        if (Array.isArray(linksList) && linksList.length > 0) {
+            const firstLink = linksList[0];
+            if (typeof firstLink === 'string' && firstLink.trim() !== '') {
+                primaryLink = firstLink.trim();
+            } else if (firstLink && typeof firstLink === 'object' && (firstLink.url || firstLink.link)) {
+                primaryLink = (firstLink.url || firstLink.link).trim();
+            }
+        }
+        if (!primaryLink && responseData?.content) {
+            const urlMatch = responseData.content.match(/https?:\/\/[^\s]+/i);
+            if (urlMatch) {
+                primaryLink = urlMatch[0];
+            }
+        }
 
         let formattedReply;
         let metaRes;
         let outgoingMsgType = 'text';
 
-        if (hasOptions) {
-            // Format main text WITHOUT duplicating options inside text body
+        if (hasOptions && primaryLink) {
+            // Options + Link: Send main text with links formatted, followed by interactive options
             formattedReply = whatsappService.formatWiraResponse(responseData, false);
-            
             try {
-                // If main body text is very long (> 1000 chars), send body text first, then send options button/list
+                if (formattedReply.length > 1000) {
+                    await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
+                    metaRes = await whatsappService.sendInteractiveMessage(fromPhone, "Please choose an option below:", optionsList, phoneId);
+                } else {
+                    metaRes = await whatsappService.sendInteractiveMessage(fromPhone, formattedReply, optionsList, phoneId);
+                }
+                // Send supplementary CTA URL button for 1-click link opening
+                await whatsappService.sendCtaUrlMessage(fromPhone, "Click below to open link:", primaryLink, "Open Link", phoneId).catch(err => {
+                    console.warn('[Webhook Warning] Failed to send secondary CTA URL button:', err.message);
+                });
+                outgoingMsgType = 'interactive';
+            } catch (err) {
+                console.warn(`[Webhook Error] Interactive options failed (${err.message}). Falling back to text message.`);
+                formattedReply = whatsappService.formatWiraResponse(responseData, true);
+                metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
+            }
+        } else if (hasOptions) {
+            // Options only
+            formattedReply = whatsappService.formatWiraResponse(responseData, false);
+            try {
                 if (formattedReply.length > 1000) {
                     await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
                     console.log(`[WhatsApp] Sent long text body, now sending interactive options to ${fromPhone}...`);
@@ -309,7 +349,19 @@ const processIncomingMessage = async (body) => {
                 formattedReply = whatsappService.formatWiraResponse(responseData, true);
                 metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
             }
+        } else if (primaryLink) {
+            // Link only (No options): Send Interactive CTA URL Button message!
+            formattedReply = whatsappService.formatWiraResponse(responseData, true);
+            try {
+                console.log(`[WhatsApp] Sending interactive CTA URL message to ${fromPhone} for link: ${primaryLink}`);
+                metaRes = await whatsappService.sendCtaUrlMessage(fromPhone, formattedReply, primaryLink, "Open Link", phoneId);
+                outgoingMsgType = 'interactive_cta_url';
+            } catch (ctaErr) {
+                console.warn(`[Webhook Error] Failed to send CTA URL message (${ctaErr.message}). Falling back to text message.`);
+                metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
+            }
         } else {
+            // Text only
             formattedReply = whatsappService.formatWiraResponse(responseData, true);
             console.log(`[WhatsApp] Sending reply to ${fromPhone}: "${formattedReply.replace(/\n/g, ' ')}"`);
             metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
