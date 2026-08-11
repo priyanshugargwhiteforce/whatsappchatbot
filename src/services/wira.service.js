@@ -23,35 +23,35 @@ const wiraApiClient = axios.create({
  * @param {object} [payload.metadata] Additional contextual metadata
  * @returns {Promise<object>} WIRA Brain response
  */
-const sendToWiraBrain = async ({ phone, whatsappPayload = {}, whatsappId = '', content = '', jobIds = [], files = [], metadata = {} }) => {
-    try {
-        console.log(`[WIRA Service] Forwarding message to WIRA Brain for ${phone}...`);
+// const sendToWiraBrain = async ({ phone, whatsappPayload = {}, whatsappId = '', content = '', jobIds = [], files = [], metadata = {} }) => {
+//     try {
+//         console.log(`[WIRA Service] Forwarding message to WIRA Brain for ${phone}...`);
         
-        const requestData = {
-            phone,
-            whatsappPayload,
-            whatsappId,
-            content,
-            jobIds,
-            files,
-            metadata,
-            role: 'user',
-            platform: 'Whatsapp'
-        };
+//         const requestData = {
+//             phone,
+//             whatsappPayload,
+//             whatsappId,
+//             content,
+//             jobIds,
+//             files,
+//             metadata,
+//             role: 'user',
+//             platform: 'Whatsapp'
+//         };
 
-        const response = await wiraApiClient.post('/whatsapp-to-wira', requestData);
-        console.log(`[WIRA Service] WIRA Brain response received for ${phone}`);
-        return response.data;
-    } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message;
-        const statusCode = error.response?.status || 'N/A';
-        console.error(`[WIRA Service] sendToWiraBrain API error (Status ${statusCode}):`, errorMsg);
-        if (error.response?.data) {
-            console.error('[WIRA Service Response Data]', JSON.stringify(error.response.data));
-        }
-        throw new Error(errorMsg);
-    }
-};
+//         const response = await wiraApiClient.post('/whatsapp-to-wira', requestData);
+//         console.log(`[WIRA Service] WIRA Brain response received for ${phone}`);
+//         return response.data;
+//     } catch (error) {
+//         const errorMsg = error.response?.data?.message || error.message;
+//         const statusCode = error.response?.status || 'N/A';
+//         console.error(`[WIRA Service] sendToWiraBrain API error (Status ${statusCode}):`, errorMsg);
+//         if (error.response?.data) {
+//             console.error('[WIRA Service Response Data]', JSON.stringify(error.response.data));
+//         }
+//         throw new Error(errorMsg);
+//     }
+// };
 
 /**
  * Upload/save candidate file attachment to WIRA Brain storage (/wira-file-save)

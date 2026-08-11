@@ -10,6 +10,7 @@ const env = require('../config/env');
  * @returns {string} Formatted text
  */
 const formatWiraResponse = (data, includeOptionsText = true) => {
+    console.log("Include Option data :>",includeOptionsText)
     console.log("Line10 whatsapp.services.js", data, "wira response data,", data?.jobs);
     if (!data) {
         return 'How can I help you today?';
