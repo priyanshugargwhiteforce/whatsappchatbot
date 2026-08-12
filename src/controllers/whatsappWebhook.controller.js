@@ -291,20 +291,31 @@ const processIncomingMessage = async (body) => {
         const linksList = responseData?.links;
         const hasOptions = Array.isArray(optionsList) && optionsList.filter(o => o && typeof o === 'string' && o.trim() !== '').length > 0;
 
-        // Extract primary link from links array or content
-        let primaryLink = null;
+        // Extract array of links with smart names
+        const extractedLinks = [];
         if (Array.isArray(linksList) && linksList.length > 0) {
-            const firstLink = linksList[0];
-            if (typeof firstLink === 'string' && firstLink.trim() !== '') {
-                primaryLink = firstLink.trim();
-            } else if (firstLink && typeof firstLink === 'object' && (firstLink.url || firstLink.link)) {
-                primaryLink = (firstLink.url || firstLink.link).trim();
-            }
+            linksList.forEach((link, idx) => {
+                if (typeof link === 'string' && link.trim() !== '') {
+                    const cleanUrl = link.trim();
+                    const label = whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
+                    extractedLinks.push({ title: label, url: cleanUrl });
+                } else if (link && typeof link === 'object' && (link.url || link.link)) {
+                    const cleanUrl = (link.url || link.link).trim();
+                    const label = link.title || link.name || link.label || whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
+                    extractedLinks.push({ title: label, url: cleanUrl });
+                }
+            });
         }
-        if (!primaryLink && responseData?.content) {
-            const urlMatch = responseData.content.match(/https?:\/\/[^\s]+/i);
-            if (urlMatch) {
-                primaryLink = urlMatch[0];
+        if (extractedLinks.length === 0 && responseData?.content) {
+            const urlMatches = responseData.content.match(/https?:\/\/[^\s]+/gi);
+            if (urlMatches && urlMatches.length > 0) {
+                const cleanedUrls = urlMatches.map(u => u.trim().replace(/[.,;:!)\]}]+$/, '')).filter(Boolean);
+                const uniqueUrls = [...new Set(cleanedUrls)];
+                uniqueUrls.forEach((urlStr, idx) => {
+                    const cleanUrl = urlStr.trim();
+                    const label = whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
+                    extractedLinks.push({ title: label, url: cleanUrl });
+                });
             }
         }
 
@@ -312,8 +323,8 @@ const processIncomingMessage = async (body) => {
         let metaRes;
         let outgoingMsgType = 'text';
 
-        if (hasOptions && primaryLink) {
-            // Options + Link: Send main text with links formatted, followed by interactive options
+        if (hasOptions && extractedLinks.length > 0) {
+            // Options + Links: Send main text with links formatted, followed by interactive options & CTA buttons
             formattedReply = whatsappService.formatWiraResponse(responseData, false);
             try {
                 if (formattedReply.length > 1000) {
@@ -322,10 +333,12 @@ const processIncomingMessage = async (body) => {
                 } else {
                     metaRes = await whatsappService.sendInteractiveMessage(fromPhone, formattedReply, optionsList, phoneId);
                 }
-                // Send supplementary CTA URL button for 1-click link opening
-                await whatsappService.sendCtaUrlMessage(fromPhone, "Click below to open link:", primaryLink, "Open Link", phoneId).catch(err => {
-                    console.warn('[Webhook Warning] Failed to send secondary CTA URL button:', err.message);
-                });
+                // Send supplementary CTA URL button for each extracted link
+                for (const item of extractedLinks.slice(0, 3)) {
+                    await whatsappService.sendCtaUrlMessage(fromPhone, `🔗 ${item.title}:`, item.url, item.title, phoneId).catch(err => {
+                        console.warn(`[Webhook Warning] Failed to send secondary CTA URL button (${item.title}):`, err.message);
+                    });
+                }
                 outgoingMsgType = 'interactive';
             } catch (err) {
                 console.warn(`[Webhook Error] Interactive options failed (${err.message}). Falling back to text message.`);
@@ -349,12 +362,23 @@ const processIncomingMessage = async (body) => {
                 formattedReply = whatsappService.formatWiraResponse(responseData, true);
                 metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
             }
-        } else if (primaryLink) {
-            // Link only (No options): Send Interactive CTA URL Button message!
+        } else if (extractedLinks.length > 0) {
+            // Links only (No options): Send Interactive CTA URL Button message for each link!
             formattedReply = whatsappService.formatWiraResponse(responseData, true);
             try {
-                console.log(`[WhatsApp] Sending interactive CTA URL message to ${fromPhone} for link: ${primaryLink}`);
-                metaRes = await whatsappService.sendCtaUrlMessage(fromPhone, formattedReply, primaryLink, "Open Link", phoneId);
+                if (extractedLinks.length === 1) {
+                    const singleLink = extractedLinks[0];
+                    console.log(`[WhatsApp] Sending interactive CTA URL message to ${fromPhone} for link: ${singleLink.url}`);
+                    metaRes = await whatsappService.sendCtaUrlMessage(fromPhone, formattedReply, singleLink.url, singleLink.title, phoneId);
+                } else {
+                    // Send main formatted text first, then send CTA URL button for each link with its custom title
+                    metaRes = await whatsappService.sendTextMessage(fromPhone, formattedReply, phoneId);
+                    for (const item of extractedLinks.slice(0, 3)) {
+                        await whatsappService.sendCtaUrlMessage(fromPhone, `🔗 Click below to open ${item.title}:`, item.url, item.title, phoneId).catch(err => {
+                            console.warn(`[Webhook Warning] Failed to send multi CTA URL button (${item.title}):`, err.message);
+                        });
+                    }
+                }
                 outgoingMsgType = 'interactive_cta_url';
             } catch (ctaErr) {
                 console.warn(`[Webhook Error] Failed to send CTA URL message (${ctaErr.message}). Falling back to text message.`);

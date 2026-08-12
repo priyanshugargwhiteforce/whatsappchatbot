@@ -4,6 +4,42 @@ const path = require('path');
 const env = require('../config/env');
 
 /**
+ * Helper to generate smart, human-readable label for a URL if none provided
+ * @param {string} urlStr 
+ * @param {number} [fallbackIndex=1] 
+ * @returns {string} Clean label (max 20 chars for button compatibility)
+ */
+const getSmartUrlLabel = (urlStr, fallbackIndex = 1) => {
+    if (!urlStr || typeof urlStr !== 'string') return `Link ${fallbackIndex}`;
+    const cleanUrl = urlStr.trim().replace(/[.,;:!)\]}]+$/, '');
+    const lowerUrl = cleanUrl.toLowerCase();
+    
+    if (lowerUrl.includes('apply')) return 'Apply Now';
+    if (lowerUrl.includes('job') || lowerUrl.includes('career') || lowerUrl.includes('vacancy')) return 'View Job Details';
+    if (lowerUrl.includes('resume') || lowerUrl.includes('cv')) return 'Upload Resume';
+    if (lowerUrl.includes('form') || lowerUrl.includes('survey')) return 'Fill Form';
+    if (lowerUrl.includes('contact') || lowerUrl.includes('support')) return 'Contact Support';
+    
+    try {
+        const parsed = new URL(cleanUrl);
+        const host = parsed.hostname.replace(/^www\./, '');
+        const pathSegments = parsed.pathname.split('/').filter(Boolean);
+        if (pathSegments.length > 0) {
+            const lastSegment = pathSegments[pathSegments.length - 1];
+            const cleanSegment = lastSegment.replace(/[-_]/g, ' ').replace(/\.\w+$/, '');
+            if (cleanSegment.length >= 3 && cleanSegment.length <= 20) {
+                return cleanSegment.charAt(0).toUpperCase() + cleanSegment.slice(1);
+            }
+        }
+        const domainName = host.split('.')[0];
+        const formattedDomain = domainName.charAt(0).toUpperCase() + domainName.slice(1);
+        return `Open ${formattedDomain}`.substring(0, 20);
+    } catch (e) {
+        return `Open Link ${fallbackIndex}`;
+    }
+};
+
+/**
  * Format WIRA AI response data to WhatsApp-friendly message text
  * @param {object} data The response data from WIRA
  * @param {boolean} [includeOptionsText=true] Whether to append options as text lines
@@ -30,15 +66,16 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
     }
 
     if (data.links && Array.isArray(data.links) && data.links.length > 0) {
-        text += '\n\n🔗 *Links:*';
+        text += '\n\n🔗 *Important Links:*';
         data.links.forEach((link, idx) => {
             if (typeof link === 'string' && link.trim() !== '') {
-                text += `\n${idx + 1}. ${link.trim()}`;
+                const label = getSmartUrlLabel(link, idx + 1);
+                text += `\n${idx + 1}. *${label}:*\n${link.trim()}`;
             } else if (link && typeof link === 'object') {
-                const label = link.title || link.name || link.label || `Link ${idx + 1}`;
-                const urlStr = link.url || link.link || '';
+                const urlStr = (link.url || link.link || '').trim();
+                const label = link.title || link.name || link.label || getSmartUrlLabel(urlStr, idx + 1);
                 if (urlStr) {
-                    text += `\n🔗 *${label}:* ${urlStr}`;
+                    text += `\n${idx + 1}. *${label}:*\n${urlStr}`;
                 }
             }
         });
@@ -407,8 +444,11 @@ const sendCtaUrlMessage = async (toPhoneNumber, bodyText, url, buttonText = "Ope
 
     const apiUrl = `https://graph.facebook.com/${version}/${phoneId}/messages`;
     const textBody = (bodyText || 'Click the button below to open link:').trim().substring(0, 1024);
-    const cleanUrl = (url || '').trim();
-    const cleanBtnText = (buttonText || 'Open Link').trim().substring(0, 20);
+    let cleanUrl = (url || '').trim().replace(/[.,;:!)\]}]+$/, '');
+    if (cleanUrl && !cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+        cleanUrl = 'https://' + cleanUrl;
+    }
+    const cleanBtnText = (buttonText || 'Open Link').trim().substring(0, 20).trim() || 'Open Link';
 
     if (!cleanUrl) {
         return sendTextMessage(toPhoneNumber, textBody, customPhoneNumberId);
@@ -626,6 +666,7 @@ const markAsReadAndTyping = async (messageId, customPhoneNumberId = null) => {
 };
 
 module.exports = {
+    getSmartUrlLabel,
     formatWiraResponse,
     sendTextMessage,
     sendInteractiveMessage,
