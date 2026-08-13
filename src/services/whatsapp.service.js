@@ -111,7 +111,11 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
     const topJobs = data.jobs.slice(0, 5);
     topJobs.forEach((job, idx) => {
       const title =
-        job.position_name || job.title || job.jobTitle || job.name || "Job Role";
+        job.position_name ||
+        job.title ||
+        job.jobTitle ||
+        job.name ||
+        "Job Role";
       const company = job.clientname || job.company;
       const location =
         job.city ||
@@ -121,7 +125,7 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
         "Remote";
 
       // Build the job header card with divider
-      let jobText = `\n\n───────────────────────────\n📌 *#${idx + 1}. ${title}*`;
+      let jobText = `\n\n──────────────────────\n📌 *#${idx + 1}. ${title}*`;
       if (company) {
         jobText += `\n🏢 *Company:* ${company}`;
       }
