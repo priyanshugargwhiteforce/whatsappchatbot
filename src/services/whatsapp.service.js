@@ -107,11 +107,11 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
   }
 
   if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) {
-    text += "\n\n*Jobs:*";
+    text += "\n\n🎯 *FEATURED JOB OPPORTUNITIES* 🎯";
     const topJobs = data.jobs.slice(0, 5);
     topJobs.forEach((job, idx) => {
       const title =
-        job.position_name || job.title || job.jobTitle || job.name || "Job";
+        job.position_name || job.title || job.jobTitle || job.name || "Job Role";
       const company = job.clientname || job.company;
       const location =
         job.city ||
@@ -120,10 +120,10 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
         job.location ||
         "Remote";
 
-      // Build the job header
-      let jobText = `\n\n${idx + 1}. *${title}*`;
+      // Build the job header card with divider
+      let jobText = `\n\n───────────────────────────\n📌 *#${idx + 1}. ${title}*`;
       if (company) {
-        jobText += ` at *${company}*`;
+        jobText += `\n🏢 *Company:* ${company}`;
       }
 
       // Location
@@ -138,26 +138,26 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
         maxExp !== undefined &&
         maxExp !== null
       ) {
-        jobText += `\n💼 *Experience:* ${minExp}-${maxExp} Years`;
+        jobText += `\n💼 *Experience:* ${minExp} - ${maxExp} Years`;
       } else if (minExp !== undefined && minExp !== null) {
         jobText += `\n💼 *Experience:* ${minExp}+ Years`;
       } else if (maxExp !== undefined && maxExp !== null) {
         jobText += `\n💼 *Experience:* Up to ${maxExp} Years`;
       }
 
-      // Skills
-      if (job.skill_set) {
-        jobText += `\n🛠️ *Skills:* ${job.skill_set}`;
-      }
-
       // Salary
-      const formatSalary = (val) => {
+      const formatSalaryVal = (val) => {
         if (val === null || val === undefined || val === "") return "";
         const num = Number(val);
-        return isNaN(num) ? val : num.toLocaleString("en-IN");
+        if (isNaN(num)) return val;
+        if (num > 0 && num < 100) {
+          return `₹${num} LPA`;
+        }
+        return `₹${num.toLocaleString("en-IN")}`;
       };
-      const minSal = formatSalary(job.min_salary);
-      const maxSal = formatSalary(job.max_salary);
+
+      const minSal = formatSalaryVal(job.min_salary);
+      const maxSal = formatSalaryVal(job.max_salary);
       const salType = job.salary_type || "";
       const payType = job.pay_type || "";
 
@@ -171,6 +171,11 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
         if (salType) salLine += ` ${salType}`;
         if (payType) salLine += ` ${payType}`;
         jobText += salLine.trimEnd();
+      }
+
+      // Key Skills
+      if (job.skill_set) {
+        jobText += `\n🛠️ *Key Skills:* ${job.skill_set}`;
       }
 
       // Contact
@@ -194,14 +199,15 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
         jobText += contactLine;
       }
 
-      //Job View Link
+      // Job View & Apply Link
       const jobId = job.id || job.job_id || job.jobId || job.jobid;
       if (jobId) {
-        jobText += `\n🔗 *Job Details:* https://www.white-force.com/job-description/${jobId}/whiteforce`;
+        jobText += `\n👉 *Apply Now:* https://www.white-force.com/job-description/${jobId}/whiteforce`;
       }
 
       text += jobText;
     });
+    text += "\n───────────────────────────";
   }
 
   // Limit to WhatsApp character limit (4096)
