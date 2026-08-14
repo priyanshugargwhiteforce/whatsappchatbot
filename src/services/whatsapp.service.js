@@ -203,6 +203,20 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
         jobText += contactLine;
       }
 
+      //Job Closing Date
+      const closingDate = job.close_date;
+      const formattedClosingDate = new Date(closingDate).toLocaleDateString(
+        "en-IN",
+        {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        },
+      );
+      if (closingDate) {
+        jobText += `\n🗓️ *Closing Date:* ${formattedClosingDate}`;
+      }
+
       // Job View & Apply Link
       const jobId = job.id || job.job_id || job.jobId || job.jobid;
       if (jobId) {
