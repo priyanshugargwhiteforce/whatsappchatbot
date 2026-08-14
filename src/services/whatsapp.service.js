@@ -182,6 +182,20 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
         jobText += `\n🛠️ *Key Skills:* ${job.skill_set}`;
       }
 
+      //Job Closing Date
+      const closingDate = job.close_date;
+      const formattedClosingDate = new Date(closingDate).toLocaleDateString(
+        "en-IN",
+        {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        },
+      );
+      if (closingDate) {
+        jobText += `\n🗓️ *Closing Date:* ${formattedClosingDate}`;
+      }
+
       // Contact
       const contactName = job.contact_person_name;
       const contactPhone = job.person_contact;
@@ -203,19 +217,8 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
         jobText += contactLine;
       }
 
-      //Job Closing Date
-      const closingDate = job.close_date;
-      const formattedClosingDate = new Date(closingDate).toLocaleDateString(
-        "en-IN",
-        {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        },
-      );
-      if (closingDate) {
-        jobText += `\n🗓️ *Closing Date:* ${formattedClosingDate}`;
-      }
+      //Job Blank Space
+      jobText += `\n`;
 
       // Job View & Apply Link
       const jobId = job.id || job.job_id || job.jobId || job.jobid;
@@ -225,7 +228,7 @@ const formatWiraResponse = (data, includeOptionsText = true) => {
 
       text += jobText;
     });
-    text += "\n───────────────────────────";
+    text += "\n───────────────── ─ ─ ─ ─";
   }
 
   // Limit to WhatsApp character limit (4096)
