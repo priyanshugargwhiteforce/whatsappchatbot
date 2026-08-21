@@ -278,31 +278,35 @@ const processIncomingMessage = async (body) => {
       );
     }
 
-    // 7. Forward incoming message to WIRA AI (Legacy Chatbot Session)
-    // NOTE: WIRA Brain (/whatsapp-to-wira via sendToWiraBrain) is temporarily commented out as WIRA Brain is under active development.
-    // We are using the legacy send & reply WIRA Chatbot service (/start-chatbot & /reply-chatbot) directly.
+    // 7. Forward incoming message to WIRA Brain (/whatsapp-to-wira) - PRIMARY & EXCLUSIVE AI ENGINE
     let wiraResponse;
+    try {
+      console.log(
+        `[WIRA Brain] Forwarding incoming WhatsApp message from ${fromPhone}...`,
+      );
+      wiraResponse = await wiraService.sendToWiraBrain({
+        phone: fromPhone,
+        whatsappPayload: msg,
+        whatsappId: messageId,
+        content: messageText,
+        files: mediaInfo ? [mediaInfo] : [],
+        metadata: { phoneId },
+      });
+      console.log(
+        `[WIRA Brain Response] Content for ${fromPhone}: "${
+          wiraResponse?.data?.content || wiraResponse?.content || ""
+        }"`,
+      );
+    } catch (wiraBrainErr) {
+      console.error(
+        `[Webhook WIRA Brain Error] Failed to process message via WIRA Brain for ${fromPhone}:`,
+        wiraBrainErr.message,
+      );
+      // NOTE: Fallback to legacy chatbot is explicitly disabled to prevent chat session state conflicts.
+    }
 
     /*
-        // --- TEMPORARILY COMMENTED OUT: WIRA Brain Integration ---
-        try {
-            console.log(`[WIRA Brain] Forwarding incoming WhatsApp message from ${fromPhone}...`);
-            wiraResponse = await wiraService.sendToWiraBrain({
-                phone: fromPhone,
-                whatsappPayload: msg,
-                whatsappId: messageId,
-                content: messageText,
-                files: mediaInfo ? [mediaInfo] : [],
-                metadata: { phoneId }
-            });
-            console.log(`[WIRA Brain Response] Content for ${fromPhone}: "${wiraResponse?.data?.content || wiraResponse?.content || ''}"`);
-        } catch (wiraErr) {
-            console.warn(`[Webhook WIRA Brain Warning] ${wiraErr.message}. Attempting fallback to chatbot session...`);
-        }
-        // --- END TEMPORARILY COMMENTED OUT ---
-        */
-
-    // --- Active Legacy WIRA Chatbot Session Flow ---
+    // --- COMMENTED OUT: Legacy WIRA Chatbot Session Flow (Disabled) ---
     try {
       let activeSession = await sessionModel.findActiveSession(fromPhone);
       let sessionId = activeSession?.session_id;
@@ -356,6 +360,8 @@ const processIncomingMessage = async (body) => {
         wiraErr.message,
       );
     }
+    // --- END COMMENTED OUT: Legacy WIRA Chatbot Session Flow ---
+    */
 
     // 8. Send response back to the WhatsApp user (Interactive Buttons/List/CTA URL)
     const responseData = wiraResponse?.data || wiraResponse || {};
