@@ -288,6 +288,7 @@ const processIncomingMessage = async (body) => {
         whatsappPayload: msg,
         whatsappId: messageId,
         content: messageText,
+        webName: env.WIRA_WEB_NAME || "White Force",
         files: mediaInfo ? [mediaInfo] : [],
         metadata: { phoneId },
       });
