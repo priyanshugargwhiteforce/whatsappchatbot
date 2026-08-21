@@ -421,9 +421,7 @@ const wiraHitMsg = async (req, res) => {
       env.WHATSAPP_PHONE_NUMBER_ID;
 
     const optionsList =
-      bodyObj.data?.options ||
-      innerPayload?.options ||
-      bodyObj.options;
+      bodyObj.data?.options || innerPayload?.options || bodyObj.options;
 
     const linksList =
       bodyObj.data?.links ||
