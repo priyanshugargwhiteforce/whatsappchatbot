@@ -42,6 +42,7 @@ app.get('/health', (req, res) => {
 // Mount WhatsApp routing
 const whatsappRouter = require('./src/routes/whatsapp.routes');
 app.use('/api/whatsapp-chatbot', whatsappRouter);
+app.use('/api/whatsapp-chat', whatsappRouter);
 app.use('/api/whatsapp', whatsappRouter);
 
 // Global error handler middleware

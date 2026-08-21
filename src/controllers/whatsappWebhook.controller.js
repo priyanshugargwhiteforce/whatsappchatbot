@@ -392,8 +392,8 @@ const wiraHitMsg = async (req, res) => {
     }
 
     const rawPhone =
-      innerPayload?.phone ||
       bodyObj.data?.phone ||
+      innerPayload?.phone ||
       bodyObj.phone ||
       bodyObj.to ||
       bodyObj.whatsappNumber;
@@ -415,19 +415,22 @@ const wiraHitMsg = async (req, res) => {
     }
 
     const phoneId =
-      bodyObj.phoneId ||
       bodyObj.data?.phoneId ||
       innerPayload?.phoneId ||
+      bodyObj.phoneId ||
       env.WHATSAPP_PHONE_NUMBER_ID;
 
     const optionsList =
-      innerPayload?.options || bodyObj.options || bodyObj.data?.options;
+      bodyObj.data?.options ||
+      innerPayload?.options ||
+      bodyObj.options;
 
     const linksList =
+      bodyObj.data?.links ||
+      bodyObj.data?.urls ||
       innerPayload?.links ||
       innerPayload?.urls ||
-      bodyObj.links ||
-      bodyObj.data?.links;
+      bodyObj.links;
 
     const hasOptions =
       Array.isArray(optionsList) &&
@@ -653,7 +656,9 @@ const wiraHitMsg = async (req, res) => {
       data: {
         phone: recipientPhone,
         messageId: outgoingMessageId,
-        metaResponse: metaRes,
+        whatsappId: outgoingMessageId,
+        whatsappPayload: metaRes || {},
+        metaResponse: metaRes || {},
       },
     });
   } catch (error) {
