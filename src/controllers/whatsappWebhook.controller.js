@@ -356,6 +356,7 @@ const wiraHitMsg = async (req, res) => {
     );
 
     let bodyObj = req.body || {};
+    console.log(bodyObj, "bodyobj");
 
     // 1. If req.body is a stringified JSON string, parse it
     if (typeof bodyObj === "string") {
@@ -420,9 +421,7 @@ const wiraHitMsg = async (req, res) => {
       env.WHATSAPP_PHONE_NUMBER_ID;
 
     const optionsList =
-      innerPayload?.options ||
-      bodyObj.options ||
-      bodyObj.data?.options;
+      innerPayload?.options || bodyObj.options || bodyObj.data?.options;
 
     const linksList =
       innerPayload?.links ||
