@@ -355,9 +355,48 @@ const wiraHitMsg = async (req, res) => {
       JSON.stringify(req.body, null, 2),
     );
 
-    const bodyData = req.body.data || {};
-    const rawPhone = req.body.phone || bodyData.phone || req.body.to || req.body.whatsappNumber;
-    
+    let bodyObj = req.body || {};
+
+    // 1. If req.body is a stringified JSON string, parse it
+    if (typeof bodyObj === "string") {
+      try {
+        bodyObj = JSON.parse(bodyObj);
+      } catch (e) {
+        console.warn(
+          "[WIRA Hit Msg] Unable to parse req.body as JSON string:",
+          e.message,
+        );
+      }
+    }
+
+    // 2. If bodyObj.data is a stringified JSON string, parse it
+    if (bodyObj && typeof bodyObj.data === "string") {
+      try {
+        bodyObj.data = JSON.parse(bodyObj.data);
+      } catch (e) {
+        console.warn(
+          "[WIRA Hit Msg] Unable to parse bodyObj.data as JSON string:",
+          e.message,
+        );
+      }
+    }
+
+    // 3. Extract inner payload object
+    let innerPayload =
+      bodyObj.data?.data || bodyObj.data || bodyObj.payload || bodyObj;
+    if (typeof innerPayload === "string") {
+      try {
+        innerPayload = JSON.parse(innerPayload);
+      } catch (e) {}
+    }
+
+    const rawPhone =
+      innerPayload?.phone ||
+      bodyObj.data?.phone ||
+      bodyObj.phone ||
+      bodyObj.to ||
+      bodyObj.whatsappNumber;
+
     if (!rawPhone) {
       return res.status(400).json({
         statusCode: 400,
@@ -374,11 +413,23 @@ const wiraHitMsg = async (req, res) => {
       recipientPhone = "91" + recipientPhone;
     }
 
-    const innerPayload = bodyData.data || bodyData || req.body.payload || req.body;
-    const phoneId = req.body.phoneId || req.body.data?.phoneId || env.WHATSAPP_PHONE_NUMBER_ID;
+    const phoneId =
+      bodyObj.phoneId ||
+      bodyObj.data?.phoneId ||
+      innerPayload?.phoneId ||
+      env.WHATSAPP_PHONE_NUMBER_ID;
 
-    const optionsList = innerPayload?.options || req.body.options;
-    const linksList = innerPayload?.links || req.body.links;
+    const optionsList =
+      innerPayload?.options ||
+      bodyObj.options ||
+      bodyObj.data?.options;
+
+    const linksList =
+      innerPayload?.links ||
+      innerPayload?.urls ||
+      bodyObj.links ||
+      bodyObj.data?.links;
+
     const hasOptions =
       Array.isArray(optionsList) &&
       optionsList.filter((o) => o && typeof o === "string" && o.trim() !== "")
