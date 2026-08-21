@@ -290,6 +290,7 @@ const processIncomingMessage = async (body) => {
         content: messageText,
         files: mediaInfo ? [mediaInfo] : [],
         metadata: { phoneId },
+        webName: env.WIRA_WEB_NAME || "White Force",
       });
       console.log(
         `[WIRA Brain] Message from ${fromPhone} successfully forwarded to WIRA Brain. Acknowledgment:`,
@@ -318,25 +319,18 @@ const receiveWebhook = (req, res) => {
     console.log("[Webhook] Raw POST received");
     console.log("[Webhook Raw Hit]", JSON.stringify(req.body, null, 2));
 
-    const body = req.body;
+    const body = req.body || {};
+    const innerPayload = body.data || body;
 
-    if (body.object === "whatsapp_business_account") {
-      // Respond 200 immediately to Meta to prevent retries
-      res.status(200).send("EVENT_RECEIVED");
+    // Respond 200 immediately to Meta / Forwarded Webhooks to prevent retries
+    res.status(200).send("EVENT_RECEIVED");
 
-      // Trigger background processing asynchronously after response is sent
-      setImmediate(() => {
-        processIncomingMessage(body).catch((err) => {
-          console.error("[Webhook Async Background Error]", err.message);
-        });
+    // Trigger background processing asynchronously after response is sent
+    setImmediate(() => {
+      processIncomingMessage(innerPayload).catch((err) => {
+        console.error("[Webhook Async Background Error]", err.message);
       });
-    } else {
-      console.warn(
-        "[Webhook Warning] Unknown object type received:",
-        body.object,
-      );
-      res.sendStatus(404);
-    }
+    });
   } catch (error) {
     console.error("[Webhook POST Error]", error.message);
     if (!res.headersSent) {

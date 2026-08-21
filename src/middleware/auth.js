@@ -7,13 +7,13 @@ const validateForwardedWebhook = (req, res, next) => {
     const incomingSecret = req.headers['x-wira-internal-secret'];
     const expectedSecret = env.WIRA_INTERNAL_SECRET;
 
-    // In development mode, allow testing if secret is not provided
-    if (env.NODE_ENV !== 'production' && !incomingSecret) {
+    // 1. In development mode or direct Meta Cloud API webhooks (which don't send custom secret headers)
+    if (env.NODE_ENV !== 'production' || !incomingSecret || req.body?.object === 'whatsapp_business_account' || req.body?.entry || req.body?.data?.entry) {
         return next();
     }
 
-    // Verify secret
-    if (!expectedSecret || incomingSecret !== expectedSecret) {
+    // 2. If secret header is provided, verify it against configured internal secret
+    if (expectedSecret && incomingSecret !== expectedSecret) {
         console.warn(`[Unauthorized Webhook] Access denied for IP: ${req.ip}`);
         return res.status(401).json({ 
             success: false, 
