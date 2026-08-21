@@ -278,13 +278,12 @@ const processIncomingMessage = async (body) => {
       );
     }
 
-    // 7. Forward incoming message to WIRA Brain (/whatsapp-to-wira) - PRIMARY & EXCLUSIVE AI ENGINE
-    let wiraResponse;
+    // 7. Forward incoming message to WIRA Brain (/whatsapp-to-wira)
     try {
       console.log(
         `[WIRA Brain] Forwarding incoming WhatsApp message from ${fromPhone}...`,
       );
-      wiraResponse = await wiraService.sendToWiraBrain({
+      const wiraRes = await wiraService.sendToWiraBrain({
         phone: fromPhone,
         whatsappPayload: msg,
         whatsappId: messageId,
@@ -293,311 +292,18 @@ const processIncomingMessage = async (body) => {
         metadata: { phoneId },
       });
       console.log(
-        `[WIRA Brain Response] Content for ${fromPhone}: "${
-          wiraResponse?.data?.content || wiraResponse?.content || ""
-        }"`,
+        `[WIRA Brain] Message from ${fromPhone} successfully forwarded to WIRA Brain. Acknowledgment:`,
+        JSON.stringify(wiraRes || {}),
       );
     } catch (wiraBrainErr) {
       console.error(
-        `[Webhook WIRA Brain Error] Failed to process message via WIRA Brain for ${fromPhone}:`,
+        `[Webhook WIRA Brain Error] Failed to forward message to WIRA Brain for ${fromPhone}:`,
         wiraBrainErr.message,
       );
-      // NOTE: Fallback to legacy chatbot is explicitly disabled to prevent chat session state conflicts.
-    }
-
-    /*
-    // --- COMMENTED OUT: Legacy WIRA Chatbot Session Flow (Disabled) ---
-    try {
-      let activeSession = await sessionModel.findActiveSession(fromPhone);
-      let sessionId = activeSession?.session_id;
-
-      if (!sessionId) {
-        console.log(
-          `[WIRA Chatbot] No active session for ${fromPhone}. Initializing new session...`,
-        );
-        const startRes = await wiraService.startChatbot(env.WIRA_WEB_NAME);
-        if (startRes && startRes.id) {
-          sessionId = startRes.id;
-          await sessionModel.saveSession(
-            fromPhone,
-            sessionId,
-            env.WIRA_WEB_NAME,
-          );
-          wiraResponse = startRes;
-        }
-      }
-
-      if (sessionId) {
-        try {
-          console.log(
-            `[WIRA Chatbot] Sending query to session ${sessionId} for ${fromPhone}...`,
-          );
-          wiraResponse = await wiraService.replyChatbot(sessionId, messageText);
-        } catch (replyErr) {
-          console.warn(
-            `[WIRA Chatbot] Session ${sessionId} reply failed (${replyErr.message}). Restarting fresh session...`,
-          );
-          const startRes = await wiraService.startChatbot(env.WIRA_WEB_NAME);
-          if (startRes && startRes.id) {
-            const newSessionId = startRes.id;
-            await sessionModel.saveSession(
-              fromPhone,
-              newSessionId,
-              env.WIRA_WEB_NAME,
-            );
-            wiraResponse = await wiraService.replyChatbot(
-              newSessionId,
-              messageText,
-            );
-          } else {
-            throw replyErr;
-          }
-        }
-      }
-    } catch (wiraErr) {
-      console.error(
-        "[Webhook WIRA Chatbot Error] Unable to complete chatbot reply:",
-        wiraErr.message,
-      );
-    }
-    // --- END COMMENTED OUT: Legacy WIRA Chatbot Session Flow ---
-    */
-
-    // 8. Send response back to the WhatsApp user (Interactive Buttons/List/CTA URL)
-    const responseData = wiraResponse?.data || wiraResponse || {};
-    const optionsList = responseData?.options;
-    const linksList = responseData?.links;
-    const hasOptions =
-      Array.isArray(optionsList) &&
-      optionsList.filter((o) => o && typeof o === "string" && o.trim() !== "")
-        .length > 0;
-
-    // Extract array of links with smart names
-    const extractedLinks = [];
-    if (Array.isArray(linksList) && linksList.length > 0) {
-      linksList.forEach((link, idx) => {
-        if (typeof link === "string" && link.trim() !== "") {
-          const cleanUrl = link.trim();
-          const label = whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
-          extractedLinks.push({ title: label, url: cleanUrl });
-        } else if (
-          link &&
-          typeof link === "object" &&
-          (link.url || link.link)
-        ) {
-          const cleanUrl = (link.url || link.link).trim();
-          const label =
-            link.title ||
-            link.name ||
-            link.label ||
-            whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
-          extractedLinks.push({ title: label, url: cleanUrl });
-        }
-      });
-    }
-    if (extractedLinks.length === 0 && responseData?.content) {
-      const urlMatches = responseData.content.match(/https?:\/\/[^\s]+/gi);
-      if (urlMatches && urlMatches.length > 0) {
-        const cleanedUrls = urlMatches
-          .map((u) => u.trim().replace(/[.,;:!)\]}]+$/, ""))
-          .filter(Boolean);
-        const uniqueUrls = [...new Set(cleanedUrls)];
-        uniqueUrls.forEach((urlStr, idx) => {
-          const cleanUrl = urlStr.trim();
-          const label = whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
-          extractedLinks.push({ title: label, url: cleanUrl });
-        });
-      }
-    }
-
-    let formattedReply;
-    let metaRes;
-    let outgoingMsgType = "text";
-
-    if (hasOptions && extractedLinks.length > 0) {
-      // Options + Links: Send main text with links formatted, followed by interactive options & CTA buttons
-      formattedReply = whatsappService.formatWiraResponse(responseData, false);
-      try {
-        if (formattedReply.length > 1000) {
-          await whatsappService.sendTextMessage(
-            fromPhone,
-            formattedReply,
-            phoneId,
-          );
-          metaRes = await whatsappService.sendInteractiveMessage(
-            fromPhone,
-            "Please choose an option below:",
-            optionsList,
-            phoneId,
-          );
-        } else {
-          metaRes = await whatsappService.sendInteractiveMessage(
-            fromPhone,
-            formattedReply,
-            optionsList,
-            phoneId,
-          );
-        }
-        // Send supplementary CTA URL button for each extracted link
-        for (const item of extractedLinks.slice(0, 3)) {
-          await whatsappService
-            .sendCtaUrlMessage(
-              fromPhone,
-              `🔗 ${item.title}:`,
-              item.url,
-              item.title,
-              phoneId,
-            )
-            .catch((err) => {
-              console.warn(
-                `[Webhook Warning] Failed to send secondary CTA URL button (${item.title}):`,
-                err.message,
-              );
-            });
-        }
-        outgoingMsgType = "interactive";
-      } catch (err) {
-        console.warn(
-          `[Webhook Error] Interactive options failed (${err.message}). Falling back to text message.`,
-        );
-        formattedReply = whatsappService.formatWiraResponse(responseData, true);
-        metaRes = await whatsappService.sendTextMessage(
-          fromPhone,
-          formattedReply,
-          phoneId,
-        );
-      }
-    } else if (hasOptions) {
-      // Options only
-      formattedReply = whatsappService.formatWiraResponse(responseData, false);
-      try {
-        if (formattedReply.length > 1000) {
-          await whatsappService.sendTextMessage(
-            fromPhone,
-            formattedReply,
-            phoneId,
-          );
-          console.log(
-            `[WhatsApp] Sent long text body, now sending interactive options to ${fromPhone}...`,
-          );
-          metaRes = await whatsappService.sendInteractiveMessage(
-            fromPhone,
-            "Please choose an option below:",
-            optionsList,
-            phoneId,
-          );
-        } else {
-          metaRes = await whatsappService.sendInteractiveMessage(
-            fromPhone,
-            formattedReply,
-            optionsList,
-            phoneId,
-          );
-        }
-        outgoingMsgType = "interactive";
-      } catch (interactiveErr) {
-        console.warn(
-          `[Webhook Error] Failed to send interactive message (${interactiveErr.message}). Falling back to text message.`,
-        );
-        formattedReply = whatsappService.formatWiraResponse(responseData, true);
-        metaRes = await whatsappService.sendTextMessage(
-          fromPhone,
-          formattedReply,
-          phoneId,
-        );
-      }
-    } else if (extractedLinks.length > 0) {
-      // Links only (No options): Send Interactive CTA URL Button message for each link!
-      formattedReply = whatsappService.formatWiraResponse(responseData, true);
-      try {
-        if (extractedLinks.length === 1) {
-          const singleLink = extractedLinks[0];
-          console.log(
-            `[WhatsApp] Sending interactive CTA URL message to ${fromPhone} for link: ${singleLink.url}`,
-          );
-          metaRes = await whatsappService.sendCtaUrlMessage(
-            fromPhone,
-            formattedReply,
-            singleLink.url,
-            singleLink.title,
-            phoneId,
-          );
-        } else {
-          // Send main formatted text first, then send CTA URL button for each link with its custom title
-          metaRes = await whatsappService.sendTextMessage(
-            fromPhone,
-            formattedReply,
-            phoneId,
-          );
-          for (const item of extractedLinks.slice(0, 3)) {
-            await whatsappService
-              .sendCtaUrlMessage(
-                fromPhone,
-                `🔗 Click below to open ${item.title}:`,
-                item.url,
-                item.title,
-                phoneId,
-              )
-              .catch((err) => {
-                console.warn(
-                  `[Webhook Warning] Failed to send multi CTA URL button (${item.title}):`,
-                  err.message,
-                );
-              });
-          }
-        }
-        outgoingMsgType = "interactive_cta_url";
-      } catch (ctaErr) {
-        console.warn(
-          `[Webhook Error] Failed to send CTA URL message (${ctaErr.message}). Falling back to text message.`,
-        );
-        metaRes = await whatsappService.sendTextMessage(
-          fromPhone,
-          formattedReply,
-          phoneId,
-        );
-      }
-    } else {
-      // Text only
-      formattedReply = whatsappService.formatWiraResponse(responseData, true);
-      console.log(
-        `[WhatsApp] Sending reply to ${fromPhone}: "${formattedReply.replace(/\n/g, " ")}"`,
-      );
-      metaRes = await whatsappService.sendTextMessage(
-        fromPhone,
-        formattedReply,
-        phoneId,
-      );
-    }
-
-    // 9. Extract Meta outgoing message ID
-    const outgoingMessageId = metaRes?.messages?.[0]?.id || `out_${messageId}`;
-    console.log(
-      `[WhatsApp] Message sent (${outgoingMsgType}): ${outgoingMessageId}`,
-    );
-
-    // 10. Log outgoing message
-    await messageLogModel.logMessage({
-      whatsappNumber: fromPhone,
-      messageId: outgoingMessageId,
-      direction: "outgoing",
-      messageType: outgoingMsgType,
-      messageText: formattedReply,
-      rawPayload: metaRes || {},
-    });
-
-    // 11. Check if the session is terminated
-    const isTerminated =
-      responseData?.terminated === true || wiraResponse?.terminated === true;
-    if (isTerminated) {
-      console.log(
-        `[Webhook] WIRA response flagged session termination for ${fromPhone}. Terminating...`,
-      );
-      await sessionModel.terminateSession(fromPhone);
     }
 
     console.log(
-      `[Webhook] Finished processing incoming message ${messageId}. Reply sent.`,
+      `[Webhook] Background processing for incoming message ${messageId} complete. Awaiting asynchronous reply via /wira-hit-msg.`,
     );
   } catch (error) {
     console.error("[Webhook Error]", error.message);
@@ -650,11 +356,9 @@ const wiraHitMsg = async (req, res) => {
     );
 
     const bodyData = req.body.data || {};
-    const recipientPhone = bodyData.phone || req.body.phone;
-    const innerPayload = bodyData.data || bodyData || req.body;
-    const phoneId = req.body.phoneId || env.WHATSAPP_PHONE_NUMBER_ID;
-
-    if (!recipientPhone) {
+    const rawPhone = req.body.phone || bodyData.phone || req.body.to || req.body.whatsappNumber;
+    
+    if (!rawPhone) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
@@ -664,17 +368,119 @@ const wiraHitMsg = async (req, res) => {
       });
     }
 
-    const optionsList = innerPayload?.options;
+    // Format recipient phone number for Meta Cloud API (e.g. 7047490032 -> 917047490032)
+    let recipientPhone = String(rawPhone).trim().replace(/\D/g, "");
+    if (recipientPhone.length === 10) {
+      recipientPhone = "91" + recipientPhone;
+    }
+
+    const innerPayload = bodyData.data || bodyData || req.body.payload || req.body;
+    const phoneId = req.body.phoneId || req.body.data?.phoneId || env.WHATSAPP_PHONE_NUMBER_ID;
+
+    const optionsList = innerPayload?.options || req.body.options;
+    const linksList = innerPayload?.links || req.body.links;
     const hasOptions =
       Array.isArray(optionsList) &&
       optionsList.filter((o) => o && typeof o === "string" && o.trim() !== "")
         .length > 0;
 
+    // Extract array of links with smart names
+    const extractedLinks = [];
+    if (Array.isArray(linksList) && linksList.length > 0) {
+      linksList.forEach((link, idx) => {
+        if (typeof link === "string" && link.trim() !== "") {
+          const cleanUrl = link.trim();
+          const label = whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
+          extractedLinks.push({ title: label, url: cleanUrl });
+        } else if (
+          link &&
+          typeof link === "object" &&
+          (link.url || link.link)
+        ) {
+          const cleanUrl = (link.url || link.link).trim();
+          const label =
+            link.title ||
+            link.name ||
+            link.label ||
+            whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
+          extractedLinks.push({ title: label, url: cleanUrl });
+        }
+      });
+    }
+    if (extractedLinks.length === 0 && innerPayload?.content) {
+      const urlMatches = innerPayload.content.match(/https?:\/\/[^\s]+/gi);
+      if (urlMatches && urlMatches.length > 0) {
+        const cleanedUrls = urlMatches
+          .map((u) => u.trim().replace(/[.,;:!)\]}]+$/, ""))
+          .filter(Boolean);
+        const uniqueUrls = [...new Set(cleanedUrls)];
+        uniqueUrls.forEach((urlStr, idx) => {
+          const cleanUrl = urlStr.trim();
+          const label = whatsappService.getSmartUrlLabel(cleanUrl, idx + 1);
+          extractedLinks.push({ title: label, url: cleanUrl });
+        });
+      }
+    }
+
     let formattedReply;
     let metaRes;
     let outgoingMsgType = "text";
 
-    if (hasOptions) {
+    if (hasOptions && extractedLinks.length > 0) {
+      // Options + Links: Send main text with links formatted, followed by interactive options & CTA buttons
+      formattedReply = whatsappService.formatWiraResponse(innerPayload, false);
+      try {
+        if (formattedReply.length > 1000) {
+          await whatsappService.sendTextMessage(
+            recipientPhone,
+            formattedReply,
+            phoneId,
+          );
+          metaRes = await whatsappService.sendInteractiveMessage(
+            recipientPhone,
+            "Please choose an option below:",
+            optionsList,
+            phoneId,
+          );
+        } else {
+          metaRes = await whatsappService.sendInteractiveMessage(
+            recipientPhone,
+            formattedReply,
+            optionsList,
+            phoneId,
+          );
+        }
+        // Send supplementary CTA URL button for each extracted link
+        for (const item of extractedLinks.slice(0, 3)) {
+          await whatsappService
+            .sendCtaUrlMessage(
+              recipientPhone,
+              `🔗 ${item.title}:`,
+              item.url,
+              item.title,
+              phoneId,
+            )
+            .catch((err) => {
+              console.warn(
+                `[WIRA Hit Msg Warning] Failed to send secondary CTA URL button (${item.title}):`,
+                err.message,
+              );
+            });
+        }
+        outgoingMsgType = "interactive";
+      } catch (err) {
+        console.warn(
+          `[WIRA Hit Msg Error] Interactive options failed (${err.message}). Falling back to text message.`,
+        );
+        formattedReply = whatsappService.formatWiraResponse(innerPayload, true);
+        metaRes = await whatsappService.sendTextMessage(
+          recipientPhone,
+          formattedReply,
+          phoneId,
+        );
+      }
+    } else if (hasOptions) {
+      // Options only
       formattedReply = whatsappService.formatWiraResponse(innerPayload, false);
       try {
         if (formattedReply.length > 1000) {
@@ -709,10 +515,62 @@ const wiraHitMsg = async (req, res) => {
           phoneId,
         );
       }
+    } else if (extractedLinks.length > 0) {
+      // Links only (No options): Send Interactive CTA URL Button message for each link!
+      formattedReply = whatsappService.formatWiraResponse(innerPayload, true);
+      try {
+        if (extractedLinks.length === 1) {
+          const singleLink = extractedLinks[0];
+          console.log(
+            `[WIRA Hit Msg] Sending interactive CTA URL message to ${recipientPhone} for link: ${singleLink.url}`,
+          );
+          metaRes = await whatsappService.sendCtaUrlMessage(
+            recipientPhone,
+            formattedReply,
+            singleLink.url,
+            singleLink.title,
+            phoneId,
+          );
+        } else {
+          // Send main formatted text first, then send CTA URL button for each link with its custom title
+          metaRes = await whatsappService.sendTextMessage(
+            recipientPhone,
+            formattedReply,
+            phoneId,
+          );
+          for (const item of extractedLinks.slice(0, 3)) {
+            await whatsappService
+              .sendCtaUrlMessage(
+                recipientPhone,
+                `🔗 Click below to open ${item.title}:`,
+                item.url,
+                item.title,
+                phoneId,
+              )
+              .catch((err) => {
+                console.warn(
+                  `[WIRA Hit Msg Warning] Failed to send multi CTA URL button (${item.title}):`,
+                  err.message,
+                );
+              });
+          }
+        }
+        outgoingMsgType = "interactive_cta_url";
+      } catch (ctaErr) {
+        console.warn(
+          `[WIRA Hit Msg Error] Failed to send CTA URL message (${ctaErr.message}). Falling back to text message.`,
+        );
+        metaRes = await whatsappService.sendTextMessage(
+          recipientPhone,
+          formattedReply,
+          phoneId,
+        );
+      }
     } else {
+      // Text only
       formattedReply = whatsappService.formatWiraResponse(innerPayload, true);
       console.log(
-        `[WIRA Hit Msg] Sending message to ${recipientPhone}: "${formattedReply.replace(/\n/g, " ")}"`,
+        `[WIRA Hit Msg] Sending reply to ${recipientPhone}: "${formattedReply.replace(/\n/g, " ")}"`,
       );
       metaRes = await whatsappService.sendTextMessage(
         recipientPhone,
