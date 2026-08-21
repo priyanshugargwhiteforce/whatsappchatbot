@@ -32,28 +32,47 @@ const verifyWebhook = (req, res) => {
 /**
  * Process the incoming WhatsApp message payload in the background
  */
+/**
+ * Process the incoming WhatsApp message payload in the background
+ */
 const processIncomingMessage = async (body) => {
   try {
-    const entry = body.entry?.[0];
-    const change = entry?.changes?.[0];
-    const value = change?.value;
+    let payload = body || {};
 
-    const messages = value?.messages;
-    const statuses = value?.statuses;
+    // 0. Unwrap stringified or nested payloads (e.g. body.data or body.payload)
+    if (typeof payload === "string") {
+      try {
+        payload = JSON.parse(payload);
+      } catch (e) {}
+    }
+    if (payload && typeof payload.data === "string") {
+      try {
+        payload.data = JSON.parse(payload.data);
+      } catch (e) {}
+    }
+
+    const actualBody = payload.data || payload.payload || payload;
+    const entry = Array.isArray(actualBody.entry) ? actualBody.entry[0] : actualBody.entry || actualBody;
+    const change = Array.isArray(entry?.changes) ? entry.changes[0] : entry?.changes || entry;
+    const value = change?.value || change;
+
+    const messages = value?.messages || actualBody?.messages || payload?.messages;
+    const statuses = value?.statuses || actualBody?.statuses || payload?.statuses;
 
     // 1. Ignore status updates (sent, delivered, read) without messages
     if (statuses && (!messages || messages.length === 0)) {
       console.log(
-        "[Webhook] No messages found, status event or unsupported payload",
+        "[Webhook] Status event received (sent/delivered/read), skipping message processing.",
       );
       return;
     }
 
     // 2. Validate messages structure
-    const msg = messages?.[0];
+    const msg = Array.isArray(messages) ? messages[0] : messages;
     if (!msg) {
       console.log(
-        "[Webhook] No messages found, status event or unsupported payload",
+        "[Webhook] No message object found in payload. Raw payload:",
+        JSON.stringify(body, null, 2),
       );
       return;
     }
@@ -73,10 +92,12 @@ const processIncomingMessage = async (body) => {
     }
 
     // 4. Extract variables
-    const fromPhone = msg.from || value.contacts?.[0]?.wa_id;
+    const fromPhone = msg.from || value?.contacts?.[0]?.wa_id || actualBody?.from;
     const messageId = msg.id;
     const phoneId =
-      value.metadata?.phone_number_id || env.WHATSAPP_PHONE_NUMBER_ID;
+      value?.metadata?.phone_number_id ||
+      actualBody?.metadata?.phone_number_id ||
+      env.WHATSAPP_PHONE_NUMBER_ID;
 
     if (!fromPhone || !messageId) {
       console.warn(
@@ -107,7 +128,6 @@ const processIncomingMessage = async (body) => {
         const replyId = listReply?.id || "";
         const replyDesc = listReply?.description || "";
 
-        // Prioritize user selection title (e.g. "Java Developer"), then non-synthetic ID, then description
         if (replyTitle) {
           messageText = replyTitle;
         } else if (
@@ -258,7 +278,6 @@ const processIncomingMessage = async (body) => {
         },
       });
     } catch (dbErr) {
-      // If the query failed because of UNIQUE key constraint, it's a duplicate message
       if (dbErr.code === "ER_DUP_ENTRY") {
         console.log(
           `[Webhook] Duplicate entry in DB for message ID: ${messageId}. Skipping.`,
@@ -319,25 +338,17 @@ const receiveWebhook = (req, res) => {
     console.log("[Webhook] Raw POST received");
     console.log("[Webhook Raw Hit]", JSON.stringify(req.body, null, 2));
 
-    const body = req.body;
+    // Always respond 200 OK immediately to Meta/Forwarder to prevent retries or 404 timeouts
+    res.status(200).send("EVENT_RECEIVED");
 
-    if (body.object === "whatsapp_business_account") {
-      // Respond 200 immediately to Meta to prevent retries
-      res.status(200).send("EVENT_RECEIVED");
+    const body = req.body || {};
 
-      // Trigger background processing asynchronously after response is sent
-      setImmediate(() => {
-        processIncomingMessage(body).catch((err) => {
-          console.error("[Webhook Async Background Error]", err.message);
-        });
+    // Trigger background processing asynchronously after response is sent
+    setImmediate(() => {
+      processIncomingMessage(body).catch((err) => {
+        console.error("[Webhook Async Background Error]", err.message);
       });
-    } else {
-      console.warn(
-        "[Webhook Warning] Unknown object type received:",
-        body.object,
-      );
-      res.sendStatus(404);
-    }
+    });
   } catch (error) {
     console.error("[Webhook POST Error]", error.message);
     if (!res.headersSent) {
