@@ -33,7 +33,6 @@ const formatWiraPhone = (rawPhone) => {
  * @param {object} [payload.whatsappPayload] Raw WhatsApp message payload
  * @param {string} [payload.whatsappId] Meta message ID (wamid)
  * @param {string} payload.content User text content or caption
- * @param {string} [payload.webName] Web/Company name (defaults to env.WIRA_WEB_NAME || 'White Force')
  * @param {Array<string>} [payload.jobIds] Related Job IDs if available
  * @param {Array<object>} [payload.files] Saved file metadata array
  * @param {object} [payload.metadata] Additional contextual metadata
@@ -44,10 +43,9 @@ const sendToWiraBrain = async ({
   whatsappPayload = {},
   whatsappId = "",
   content = "",
-  webName = env.WIRA_WEB_NAME || "White Force",
   jobIds = [],
   files = [],
-  metadata = null,
+  metadata = {},
 }) => {
   try {
     const cleanPhone = formatWiraPhone(phone);
@@ -56,18 +54,17 @@ const sendToWiraBrain = async ({
     );
 
     const requestData = {
+      phone: cleanPhone,
+      whatsappPayload,
+      whatsappId,
+      content,
+      jobIds,
+      files,
+      metadata,
       role: "user",
       platform: "Whatsapp",
-      phone: cleanPhone,
-      webName: webName || env.WIRA_WEB_NAME || "White Force",
-      content: content || "",
-      jobIds: Array.isArray(jobIds) ? jobIds : [],
-      metadata: (metadata && Object.keys(metadata).length > 0) ? metadata : null,
-      files: Array.isArray(files) ? files : [],
-      whatsappId: whatsappId || "",
-      whatsappPayload: whatsappPayload || {},
     };
-    console.log("Request Data For WIRA :> ", JSON.stringify(requestData, null, 2));
+    console.log("Request Data For WIRA :> ", requestData);
 
     const response = await wiraApiClient.post("/whatsapp-to-wira", requestData);
     console.log(
